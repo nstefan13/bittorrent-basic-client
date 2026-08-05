@@ -1,6 +1,11 @@
 ## Now
 
 - [ ] Bencode Decoder
+  - [x] DecodeAny
+    - [x] type alliases for the types specified in BEP3
+          (so we stop using magical constants)
+    - [x] error for EOF
+    - [x] forward errors
   - [ ] Lists
   - [ ] Dictionaries
 

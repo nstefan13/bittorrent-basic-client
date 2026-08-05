@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"testing"
 
 	bencoding "github.com/nstefan13/bittorrent/bencoding"
+	"github.com/nstefan13/bittorrent/helpers"
 )
 
 func TestDecodeString(t *testing.T) {
@@ -29,10 +31,7 @@ func TestDecodeString(t *testing.T) {
 			want := tc.Output
 			got, err := bencoding.DecodeString(reader)
 
-			if err != nil {
-				t.Fatalf("an unexpected error was returned: %q", err)
-			}
-
+			assertNoError(t, err)
 			if !slices.Equal(got, want) {
 				t.Errorf("expected %q, got %q", want, got)
 			}
@@ -60,16 +59,9 @@ func TestDecodeStringErrors(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("returns %q when parsing %q", tc.Error, tc.Input), func(t *testing.T) {
 			reader := newBufferedReader(tc.Input)
-			want := tc.Error
 			_, err := bencoding.DecodeString(reader)
-
-			if err == nil {
-				t.Fatal("expected an error to be returned")
-			}
-
-			if !errors.Is(err, want) {
-				t.Errorf("expected %q, got %q", want, err.Error())
-			}
+			want := tc.Error
+			assertError(t, err, want)
 		})
 	}
 }
@@ -77,7 +69,7 @@ func TestDecodeStringErrors(t *testing.T) {
 func TestDecodeInt(t *testing.T) {
 	testCases := []struct {
 		Input  []byte
-		Output int
+		Output bencoding.BInt
 	}{
 		{Input: []byte("i42e<whatever else is there>"), Output: 42},
 		{Input: []byte("i244e<gibberish>"), Output: 244},
@@ -90,10 +82,7 @@ func TestDecodeInt(t *testing.T) {
 			want := tc.Output
 			got, err := bencoding.DecodeInt(reader)
 
-			if err != nil {
-				t.Fatalf("an unexpected error was returned: %q", err)
-			}
-
+			assertNoError(t, err)
 			if got != want {
 				t.Errorf("expected %d, got %d", want, got)
 			}
@@ -125,20 +114,84 @@ func TestDecodeIntErrors(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("returns %q when parsing %q", tc.Error, tc.Input), func(t *testing.T) {
 			reader := newBufferedReader(tc.Input)
-			want := tc.Error
 			_, err := bencoding.DecodeInt(reader)
-
-			if err == nil {
-				t.Fatal("expected an error to be returned")
-			}
-
-			if !errors.Is(err, want) {
-				t.Errorf("expected %q, got %q", want, err.Error())
-			}
+			want := tc.Error
+			assertError(t, err, want)
 		})
 	}
 }
 
+func TestDecodeAny(t *testing.T) {
+	testCases := []struct {
+		Input  []byte
+		Output any
+	}{
+		{[]byte("i42e"), bencoding.BInt(42)},
+		{[]byte("3:Ana"), bencoding.BString([]byte("Ana"))},
+		{[]byte("0:"), bencoding.BString([]byte(""))},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("decode %s", tc.Input), func(t *testing.T) {
+			reader := newBufferedReader(tc.Input)
+
+			got, _ := bencoding.DecodeAny(reader)
+			want := tc.Output
+
+			actualTypeName := typeNameOf(got)
+			expectedTypeName := typeNameOf(tc.Output)
+			if actualTypeName != expectedTypeName {
+				t.Fatalf("expected return value to be of type %q, insted it is of type %q", expectedTypeName, actualTypeName)
+			}
+
+			helpers.AssertEqual(t, want, got)
+		})
+	}
+}
+
+func TestDecodeAnyErrors(t *testing.T) {
+	testCases := []struct {
+		Input []byte
+		Err   error
+	}{
+		{[]byte(""), io.ErrUnexpectedEOF},
+		{[]byte("X"), bencoding.ErrMalformedInput},
+		{[]byte("ie"), bencoding.ErrInvalidIntegerValue},
+	}
+
+	for _, tc := range testCases {
+		reader := newBufferedReader(tc.Input)
+
+		_, err := bencoding.DecodeAny(reader)
+		want := tc.Err
+		assertError(t, err, want)
+	}
+}
+
+func typeNameOf(value any) string {
+	return reflect.TypeOf(value).Name()
+}
+
 func newBufferedReader(data []byte) *bufio.Reader {
 	return bufio.NewReader(bytes.NewReader(data))
+}
+
+func assertError(t testing.TB, err, want error) {
+	if want == nil {
+		panic("assertError called with `want` set to nil")
+	}
+
+	if err == nil {
+		t.Fatal("expected an error to be returned")
+	}
+
+	if !errors.Is(err, want) {
+		t.Errorf("expected %q, got %q", want, err.Error())
+	}
+}
+
+func assertNoError(t testing.TB, err error) {
+	if err != nil {
+		t.Fatalf("an unexpected error was returned: %q", err)
+	}
 }
