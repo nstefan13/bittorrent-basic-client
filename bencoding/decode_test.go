@@ -2,8 +2,6 @@ package bencoding_test
 
 import (
 	"bytes"
-	"errors"
-	"fmt"
 	"io"
 	"reflect"
 	"testing"
@@ -14,233 +12,260 @@ import (
 
 func TestDecodeString(t *testing.T) {
 	testCases := []struct {
+		Name   string
 		Input  []byte
 		Output bcd.BString
 	}{
-		{Input: []byte("5:SofiaAAA"), Output: bcd.BString("Sofia")},
-		{Input: []byte("3:AnaASASlkDJLJASK"), Output: bcd.BString("Ana")},
-		{Input: []byte("3:\x00\x01\x03"), Output: bcd.BString("\x00\x01\x03")},
-		{Input: []byte("0:"), Output: bcd.BString("")},
+		{
+			Name:   "valid string with trailing content",
+			Input:  []byte("5:SofiaAAA"),
+			Output: bcd.BString("Sofia"),
+		},
+		{
+			Name:   "short string with extra trailing content",
+			Input:  []byte("3:AnaASASlkDJLJASK"),
+			Output: bcd.BString("Ana"),
+		},
+		{
+			Name:   "binary string with null bytes",
+			Input:  []byte("3:\x00\x01\x03"),
+			Output: bcd.BString("\x00\x01\x03"),
+		},
+		{
+			Name:   "empty string",
+			Input:  []byte("0:"),
+			Output: bcd.BString(""),
+		},
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("decode %q to %q", tc.Input, tc.Output), func(t *testing.T) {
+		t.Run(tc.Name, func(t *testing.T) {
 			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
-
-			want := tc.Output
 			got, err := decoder.DecodeString()
-
-			assertNoError(t, err)
-			helpers.AssertEqual(t, got, want)
+			helpers.AssertNoError(t, err)
+			helpers.AssertEqual(t, tc.Output, got)
 		})
 	}
 }
 
 func TestDecodeStringErrors(t *testing.T) {
 	testCases := []struct {
+		Name  string
 		Input []byte
 		Error error
 	}{
-		{Input: []byte(""), Error: io.ErrUnexpectedEOF},
-		{Input: []byte("5"), Error: io.ErrUnexpectedEOF},
-		{Input: []byte("Sofia"), Error: io.ErrUnexpectedEOF},
-		{Input: []byte("5:"), Error: io.ErrUnexpectedEOF},
-		{Input: []byte("10000:too_small_of_a_string"), Error: io.ErrUnexpectedEOF},
-
-		{Input: []byte(":"), Error: bcd.ErrInvalidStringLength},
-		{Input: []byte("-1:"), Error: bcd.ErrInvalidStringLength},
-		{Input: []byte(" 5:Sofia"), Error: bcd.ErrInvalidStringLength},
-		{Input: []byte("5 :Sofia"), Error: bcd.ErrInvalidStringLength},
-		{Input: []byte("17179869184:Sofia"), Error: bcd.ErrInvalidStringLength},
+		{Name: "empty input", Input: []byte(""), Error: io.ErrUnexpectedEOF},
+		{Name: "missing colon and string data", Input: []byte("5"), Error: io.ErrUnexpectedEOF},
+		{Name: "missing length prefix and colon", Input: []byte("Sofia"), Error: io.ErrUnexpectedEOF},
+		{Name: "missing string data after colon", Input: []byte("5:"), Error: io.ErrUnexpectedEOF},
+		{Name: "string data shorter than specified length", Input: []byte("10000:too_small_of_a_string"), Error: io.ErrUnexpectedEOF},
+		{Name: "empty length prefix before colon", Input: []byte(":"), Error: bcd.ErrInvalidStringLength},
+		{Name: "negative length prefix", Input: []byte("-1:"), Error: bcd.ErrInvalidStringLength},
+		{Name: "leading space in length prefix", Input: []byte(" 5:Sofia"), Error: bcd.ErrInvalidStringLength},
+		{Name: "space before colon in length prefix", Input: []byte("5 :Sofia"), Error: bcd.ErrInvalidStringLength},
+		{Name: "length prefix is greater than the max allowed length", Input: []byte("17179869184:Sofia"), Error: bcd.ErrInvalidStringLength},
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("returns %q when parsing %q", tc.Error, tc.Input), func(t *testing.T) {
+		t.Run(tc.Name, func(t *testing.T) {
 			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
 			_, err := decoder.DecodeString()
-			want := tc.Error
-			assertError(t, err, want)
+			helpers.AssertError(t, err, tc.Error)
 		})
 	}
 }
 
 func TestDecodeInt(t *testing.T) {
 	testCases := []struct {
+		Name   string
 		Input  []byte
 		Output bcd.BInt
 	}{
-		{Input: []byte("i42e<whatever else is there>"), Output: 42},
-		{Input: []byte("i244e<gibberish>"), Output: 244},
+		{
+			Name:   "positive integer with trailing data",
+			Input:  []byte("i42e<whatever else is there>"),
+			Output: 42,
+		},
+		{
+			Name:   "positive integer with trailing gibberish",
+			Input:  []byte("i244e<gibberish>"),
+			Output: 244,
+		},
+		{
+			Name:   "zero",
+			Input:  []byte("i0e"),
+			Output: 0,
+		},
+		{
+			Name:   "negative integer",
+			Input:  []byte("i-234e"),
+			Output: -234,
+		},
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("decode %q to %d", tc.Input, tc.Output), func(t *testing.T) {
+		t.Run(tc.Name, func(t *testing.T) {
 			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
-
-			want := tc.Output
 			got, err := decoder.DecodeInt()
-
-			assertNoError(t, err)
-			if got != want {
-				t.Errorf("expected %d, got %d", want, got)
-			}
+			helpers.AssertNoError(t, err)
+			helpers.AssertEqual(t, tc.Output, got)
 		})
 	}
 }
 
 func TestDecodeIntErrors(t *testing.T) {
 	testCases := []struct {
+		Name  string
 		Input []byte
 		Error error
 	}{
-		{Input: []byte(""), Error: io.ErrUnexpectedEOF},
-		{Input: []byte("i"), Error: io.ErrUnexpectedEOF},
-		{Input: []byte("i23"), Error: io.ErrUnexpectedEOF},
-		{Input: []byte("i-123"), Error: io.ErrUnexpectedEOF},
-
-		{Input: []byte("X23"), Error: bcd.ErrMalformedInput},
-
-		{Input: []byte("ie"), Error: bcd.ErrInvalidIntegerValue},
-		{Input: []byte("i e"), Error: bcd.ErrInvalidIntegerValue},
-		{Input: []byte("i-+0e"), Error: bcd.ErrInvalidIntegerValue},
-		{Input: []byte("i-0e"), Error: bcd.ErrInvalidIntegerValue},
-		{Input: []byte("i-00e"), Error: bcd.ErrInvalidIntegerValue},
-		{Input: []byte("i-00123e"), Error: bcd.ErrInvalidIntegerValue},
-		{Input: []byte("i-123.32e"), Error: bcd.ErrInvalidIntegerValue},
+		{Name: "empty input", Input: []byte(""), Error: io.ErrUnexpectedEOF},
+		{Name: "only prefix 'i'", Input: []byte("i"), Error: io.ErrUnexpectedEOF},
+		{Name: "positive integer missing trailing 'e'", Input: []byte("i23"), Error: io.ErrUnexpectedEOF},
+		{Name: "negative integer missing trailing 'e'", Input: []byte("i-123"), Error: io.ErrUnexpectedEOF},
+		{Name: "missing 'i' prefix", Input: []byte("X23"), Error: bcd.ErrMalformedInput},
+		{Name: "empty value between 'i' and 'e'", Input: []byte("ie"), Error: bcd.ErrInvalidIntegerValue},
+		{Name: "value containing space", Input: []byte("i e"), Error: bcd.ErrInvalidIntegerValue},
+		{Name: "invalid sign prefix '-+'", Input: []byte("i-+0e"), Error: bcd.ErrInvalidIntegerValue},
+		{Name: "negative zero '-0'", Input: []byte("i-0e"), Error: bcd.ErrInvalidIntegerValue},
+		{Name: "negative zero with leading zeros '-00'", Input: []byte("i-00e"), Error: bcd.ErrInvalidIntegerValue},
+		{Name: "leading zero in negative integer '-00123'", Input: []byte("i-00123e"), Error: bcd.ErrInvalidIntegerValue},
+		{Name: "floating point number", Input: []byte("i-123.32e"), Error: bcd.ErrInvalidIntegerValue},
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("returns %q when parsing %q", tc.Error, tc.Input), func(t *testing.T) {
+		t.Run(tc.Name, func(t *testing.T) {
 			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
 			_, err := decoder.DecodeInt()
-			want := tc.Error
-			assertError(t, err, want)
+			helpers.AssertError(t, err, tc.Error)
 		})
 	}
 }
 
 func TestDecodeAny(t *testing.T) {
 	testCases := []struct {
+		Name   string
 		Input  []byte
 		Output any
 	}{
-		{[]byte("le"), bcd.BList{}},
-		{[]byte("i42e"), bcd.BInt(42)},
-
-		{[]byte("0:"), bcd.BString("")},
-		{[]byte("3:Ana"), bcd.BString("Ana")},
-
-		{[]byte("l3:anae"), bcd.BList{bcd.BString("ana")}},
+		{Name: "decode empty list", Input: []byte("le"), Output: bcd.BList{}},
+		{Name: "decode integer", Input: []byte("i42e"), Output: bcd.BInt(42)},
+		{Name: "decode empty string", Input: []byte("0:"), Output: bcd.BString("")},
+		{Name: "decode string", Input: []byte("3:Ana"), Output: bcd.BString("Ana")},
+		{Name: "decode list with string", Input: []byte("l3:anae"), Output: bcd.BList{bcd.BString("ana")}},
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("decode %s", tc.Input), func(t *testing.T) {
+		t.Run(tc.Name, func(t *testing.T) {
 			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
-
 			got, err := decoder.DecodeAny()
-			want := tc.Output
-
-			assertNoError(t, err)
+			helpers.AssertNoError(t, err)
 
 			actualTypeName := typeNameOf(got)
 			expectedTypeName := typeNameOf(tc.Output)
 			if actualTypeName != expectedTypeName {
-				t.Fatalf("expected return value to be of type %q, insted it is of type %q", expectedTypeName, actualTypeName)
+				t.Fatalf("expected return value to be of type %q, instead it is of type %q", expectedTypeName, actualTypeName)
 			}
 
-			helpers.AssertEqual(t, want, got)
+			helpers.AssertEqual(t, tc.Output, got)
 		})
 	}
 }
 
 func TestDecodeAnyErrors(t *testing.T) {
 	testCases := []struct {
+		Name  string
 		Input []byte
-		Err   error
+		Error error
 	}{
-		{[]byte(""), io.ErrUnexpectedEOF},
-		{[]byte("X"), bcd.ErrMalformedInput},
-		{[]byte("ie"), bcd.ErrInvalidIntegerValue},
+		{Name: "empty input", Input: []byte(""), Error: io.ErrUnexpectedEOF},
+		{Name: "unknown discriminator byte", Input: []byte("X"), Error: bcd.ErrMalformedInput},
+		{Name: "invalid integer element", Input: []byte("ie"), Error: bcd.ErrInvalidIntegerValue},
 	}
 
 	for _, tc := range testCases {
-		decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
-
-		_, err := decoder.DecodeAny()
-		want := tc.Err
-		assertError(t, err, want)
+		t.Run(tc.Name, func(t *testing.T) {
+			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
+			_, err := decoder.DecodeAny()
+			helpers.AssertError(t, err, tc.Error)
+		})
 	}
 }
 
 func TestDecodeList(t *testing.T) {
 	testCases := []struct {
+		Name   string
 		Input  []byte
 		Output bcd.BList
 	}{
 		{
-			[]byte("le"),
-			[]any{},
+			Name:   "empty list",
+			Input:  []byte("le"),
+			Output: bcd.BList{},
 		},
 		{
-			[]byte("li32e3:Anae"),
-			[]any{bcd.BInt(32), bcd.BString("Ana")},
+			Name:   "list with integer and string",
+			Input:  []byte("li32e3:Anae"),
+			Output: bcd.BList{bcd.BInt(32), bcd.BString("Ana")},
 		},
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("decode %q to %d", tc.Input, tc.Output), func(t *testing.T) {
+		t.Run(tc.Name, func(t *testing.T) {
 			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
-
-			want := tc.Output
 			got, err := decoder.DecodeList()
-
-			assertNoError(t, err)
-			helpers.AssertEqual(t, want, got)
+			helpers.AssertNoError(t, err)
+			helpers.AssertEqual(t, tc.Output, got)
 		})
 	}
 }
 
 func TestDecodeListErrors(t *testing.T) {
 	testCases := []struct {
+		Name  string
 		Input []byte
 		Error error
 	}{
-		{[]byte("X"), bcd.ErrMalformedInput},
-
-		{[]byte(""), io.ErrUnexpectedEOF},
-		{[]byte("l"), io.ErrUnexpectedEOF},
-		{[]byte("li12"), io.ErrUnexpectedEOF},
-		{[]byte("li12e"), io.ErrUnexpectedEOF},
-
-		{[]byte("li12e32:e"), io.ErrUnexpectedEOF},
-		{[]byte("li12e:e"), bcd.ErrMalformedInput},
-		{[]byte("li012ee"), bcd.ErrInvalidIntegerValue},
+		{Name: "missing 'l' prefix", Input: []byte("X"), Error: bcd.ErrMalformedInput},
+		{Name: "empty input", Input: []byte(""), Error: io.ErrUnexpectedEOF},
+		{Name: "only prefix 'l'", Input: []byte("l"), Error: io.ErrUnexpectedEOF},
+		{Name: "unfinished integer element inside list", Input: []byte("li12"), Error: io.ErrUnexpectedEOF},
+		{Name: "missing list terminator 'e'", Input: []byte("li12e"), Error: io.ErrUnexpectedEOF},
+		{Name: "unfinished string element inside list", Input: []byte("li12e32:e"), Error: io.ErrUnexpectedEOF},
+		{Name: "invalid length prefix for string inside list", Input: []byte("li12e:e"), Error: bcd.ErrMalformedInput},
+		{Name: "invalid integer with leading zero inside list", Input: []byte("li012ee"), Error: bcd.ErrInvalidIntegerValue},
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("returns %q when parsing %q", tc.Error, tc.Input), func(t *testing.T) {
+		t.Run(tc.Name, func(t *testing.T) {
 			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
 			_, err := decoder.DecodeList()
-			want := tc.Error
-			assertError(t, err, want)
+			helpers.AssertError(t, err, tc.Error)
 		})
 	}
 }
 
 func TestDecodeDict(t *testing.T) {
 	testCases := []struct {
+		Name   string
 		Input  []byte
 		Output bcd.BDict
 	}{
-		{[]byte("de"), bcd.BDict{}},
 		{
-			[]byte("d3:ana5:sofia4:spaml1:a1:bee"),
-			bcd.BDict{
+			Name:   "empty dict",
+			Input:  []byte("de"),
+			Output: bcd.BDict{},
+		},
+		{
+			Name:  "dict with string and list values",
+			Input: []byte("d3:ana5:sofia4:spaml1:a1:bee"),
+			Output: bcd.BDict{
 				"ana":  bcd.BString("sofia"),
 				"spam": bcd.BList{bcd.BString("a"), bcd.BString("b")},
 			},
 		},
 		{
+			Name:  "nested dict with list",
 			Input: []byte("d4:infod6:lengthi1024e4:pathl4:dir14:dir28:file.txtee4:listl1:ad4:type4:teste1:bee"),
 			Output: bcd.BDict{
 				"info": bcd.BDict{
@@ -263,64 +288,38 @@ func TestDecodeDict(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("decode %q to %v", tc.Input, tc.Output), func(t *testing.T) {
+		t.Run(tc.Name, func(t *testing.T) {
 			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
-
-			want := tc.Output
 			got, err := decoder.DecodeDict()
-
-			assertNoError(t, err)
-			helpers.AssertEqual(t, want, got)
+			helpers.AssertNoError(t, err)
+			helpers.AssertEqual(t, tc.Output, got)
 		})
 	}
 }
 
 func TestDecodeDictErrors(t *testing.T) {
 	testCases := []struct {
+		Name  string
 		Input []byte
 		Error error
 	}{
-		{[]byte("X"), bcd.ErrMalformedInput},
-
-		{[]byte(""), io.ErrUnexpectedEOF},
-		{[]byte("d"), io.ErrUnexpectedEOF},
-		{[]byte("d4"), io.ErrUnexpectedEOF},
-		{[]byte("d4:"), io.ErrUnexpectedEOF},
-		{[]byte("d4:Sofia"), bcd.ErrMalformedInput},
+		{Name: "missing 'd' prefix", Input: []byte("X"), Error: bcd.ErrMalformedInput},
+		{Name: "empty input", Input: []byte(""), Error: io.ErrUnexpectedEOF},
+		{Name: "only prefix 'd'", Input: []byte("d"), Error: io.ErrUnexpectedEOF},
+		{Name: "incomplete dict key length prefix", Input: []byte("d4"), Error: io.ErrUnexpectedEOF},
+		{Name: "incomplete dict key prefix", Input: []byte("d4:"), Error: io.ErrUnexpectedEOF},
+		{Name: "dict key missing value", Input: []byte("d4:Sofia"), Error: bcd.ErrMalformedInput},
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("returns %q when parsing %q", tc.Error, tc.Input), func(t *testing.T) {
+		t.Run(tc.Name, func(t *testing.T) {
 			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
 			_, err := decoder.DecodeDict()
-			want := tc.Error
-			assertError(t, err, want)
+			helpers.AssertError(t, err, tc.Error)
 		})
 	}
 }
 
 func typeNameOf(value any) string {
 	return reflect.TypeOf(value).Name()
-}
-
-func assertError(t testing.TB, err, want error) {
-	t.Helper()
-	if want == nil {
-		panic("assertError called with `want` set to nil")
-	}
-
-	if err == nil {
-		t.Fatal("expected an error to be returned")
-	}
-
-	if !errors.Is(err, want) {
-		t.Errorf("expected %q, got %q", want, err.Error())
-	}
-}
-
-func assertNoError(t testing.TB, err error) {
-	t.Helper()
-	if err != nil {
-		t.Fatalf("an unexpected error was returned: %q", err)
-	}
 }

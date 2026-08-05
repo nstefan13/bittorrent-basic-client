@@ -3,6 +3,8 @@ package bencoding_test
 import (
 	"bytes"
 	"errors"
+	"io"
+	"slices"
 	"testing"
 
 	bcd "github.com/nstefan13/bittorrent/bencoding"
@@ -10,72 +12,136 @@ import (
 )
 
 type errWriter struct {
-	err error
+	errGenerator func(*errWriter) error
+	calls        [][]byte
 }
 
 func (w *errWriter) Write(p []byte) (n int, err error) {
-	return 0, w.err
+	w.calls = append(w.calls, p)
+	return len(p), w.errGenerator(w)
 }
 
 func TestEncodeString(t *testing.T) {
 	testCases := []struct {
+		Name   string
 		Input  bcd.BString
 		Output []byte
 	}{
-		{bcd.BString("\x00\x01\x03"), []byte("3:\x00\x01\x03")},
-		{bcd.BString("Sofia"), []byte("5:Sofia")},
-		{bcd.BString(""), []byte("0:")},
+		{
+			Name:   "binary string",
+			Input:  bcd.BString("\x00\x01\x03"),
+			Output: []byte("3:\x00\x01\x03"),
+		},
+		{
+			Name:   "regular string",
+			Input:  bcd.BString("Sofia"),
+			Output: []byte("5:Sofia"),
+		},
+		{
+			Name:   "empty string",
+			Input:  bcd.BString(""),
+			Output: []byte("0:"),
+		},
 	}
 
 	for _, tc := range testCases {
-		buffer := &bytes.Buffer{}
-		err := bcd.NewEncoder(buffer).EncodeString(tc.Input)
-		helpers.AssertNoError(t, err)
-		helpers.AssertEqual(t, tc.Output, buffer.Bytes())
+		t.Run(tc.Name, func(t *testing.T) {
+			buffer := &bytes.Buffer{}
+			err := bcd.NewEncoder(buffer).EncodeString(tc.Input)
+			helpers.AssertNoError(t, err)
+			helpers.AssertEqual(t, tc.Output, buffer.Bytes())
+		})
 	}
 }
 
 func TestEncodeInt(t *testing.T) {
 	testCases := []struct {
+		Name   string
 		Input  bcd.BInt
 		Output []byte
 	}{
-		{bcd.BInt(0), []byte("i0e")},
-		{bcd.BInt(-0), []byte("i0e")},
-		{bcd.BInt(32), []byte("i32e")},
-		{bcd.BInt(-234), []byte("i-234e")},
+		{
+			Name:   "zero",
+			Input:  bcd.BInt(0),
+			Output: []byte("i0e"),
+		},
+		{
+			Name:   "negative zero",
+			Input:  bcd.BInt(-0),
+			Output: []byte("i0e"),
+		},
+		{
+			Name:   "positive int",
+			Input:  bcd.BInt(32),
+			Output: []byte("i32e"),
+		},
+		{
+			Name:   "negative int",
+			Input:  bcd.BInt(-234),
+			Output: []byte("i-234e"),
+		},
 	}
 
 	for _, tc := range testCases {
-		buffer := &bytes.Buffer{}
-		err := bcd.NewEncoder(buffer).EncodeInt(tc.Input)
-		helpers.AssertNoError(t, err)
-		helpers.AssertEqual(t, tc.Output, buffer.Bytes())
+		t.Run(tc.Name, func(t *testing.T) {
+			buffer := &bytes.Buffer{}
+			err := bcd.NewEncoder(buffer).EncodeInt(tc.Input)
+			helpers.AssertNoError(t, err)
+			helpers.AssertEqual(t, tc.Output, buffer.Bytes())
+		})
 	}
 }
 
 func TestEncodeList(t *testing.T) {
 	testCases := []struct {
+		Name   string
 		Input  bcd.BList
 		Output []byte
 	}{
-		{bcd.BList{bcd.BInt(2015), bcd.BString("Sofia")}, []byte("li2015e5:Sofiae")},
-		{bcd.BList{}, []byte("le")},
+		{
+			Name:   "list with int and string",
+			Input:  bcd.BList{bcd.BInt(2015), bcd.BString("Sofia")},
+			Output: []byte("li2015e5:Sofiae"),
+		},
+		{
+			Name:   "empty list",
+			Input:  bcd.BList{},
+			Output: []byte("le"),
+		},
 	}
 
 	for _, tc := range testCases {
-		buffer := &bytes.Buffer{}
-		err := bcd.NewEncoder(buffer).EncodeList(tc.Input)
-		helpers.AssertNoError(t, err)
-		helpers.AssertEqual(t, tc.Output, buffer.Bytes())
+		t.Run(tc.Name, func(t *testing.T) {
+			buffer := &bytes.Buffer{}
+			err := bcd.NewEncoder(buffer).EncodeList(tc.Input)
+			helpers.AssertNoError(t, err)
+			helpers.AssertEqual(t, tc.Output, buffer.Bytes())
+		})
 	}
 }
 
 func TestEncodeListErrors(t *testing.T) {
-	t.Run("return ErrInvalidType if the list contains unsupported types", func(t *testing.T) {
+	t.Run("return ErrUnsupportedType if the list contains unsupported types", func(t *testing.T) {
 		input := bcd.BList{bcd.BString("Ana"), bcd.BInt(12), 89}
 		err := bcd.NewEncoder(&bytes.Buffer{}).EncodeList(input)
 		helpers.AssertError(t, err, bcd.ErrUnsupportedType)
+	})
+
+	t.Run("return error when writer fails", func(t *testing.T) {
+		w := &errWriter{errGenerator: func(ew *errWriter) error { return io.ErrClosedPipe }}
+		err := bcd.NewEncoder(w).EncodeList(bcd.BList{})
+		helpers.AssertError(t, err, io.ErrClosedPipe)
+	})
+
+	t.Run("return error when writer fails at the end of list", func(t *testing.T) {
+		w := &errWriter{errGenerator: func(ew *errWriter) error {
+			if slices.Equal(ew.calls[len(ew.calls)-1], []byte("e")) {
+				return io.ErrClosedPipe
+			}
+			return nil
+		}}
+		err := bcd.NewEncoder(w).EncodeList(bcd.BList{})
+		helpers.AssertError(t, err, io.ErrClosedPipe)
 	})
 }
 
@@ -161,32 +227,69 @@ func TestEncodeDictErrors(t *testing.T) {
 
 	t.Run("return error when writer fails", func(t *testing.T) {
 		writeErr := errors.New("write failure")
-		w := &errWriter{err: writeErr}
+		w := &errWriter{errGenerator: func(ew *errWriter) error { return writeErr }}
 		err := bcd.NewEncoder(w).EncodeDict(bcd.BDict{})
 		helpers.AssertError(t, err, writeErr)
+	})
+
+	t.Run("return error when writer fails at the end of dictionary", func(t *testing.T) {
+		w := &errWriter{errGenerator: func(ew *errWriter) error {
+			if slices.Equal(ew.calls[len(ew.calls)-1], []byte("e")) {
+				return io.ErrClosedPipe
+			}
+			return nil
+		}}
+		err := bcd.NewEncoder(w).EncodeDict(bcd.BDict{})
+		helpers.AssertError(t, err, io.ErrClosedPipe)
+	})
+
+	t.Run("return error when writer fails while encoding a key", func(t *testing.T) {
+		w := &errWriter{errGenerator: func(ew *errWriter) error {
+			if len(ew.calls) == 2 {
+				return io.ErrClosedPipe
+			}
+			return nil
+		}}
+		err := bcd.NewEncoder(w).EncodeDict(bcd.BDict{"key": bcd.BInt(1)})
+		helpers.AssertError(t, err, io.ErrClosedPipe)
 	})
 }
 
 func TestEncodeAny(t *testing.T) {
 	testCases := []struct {
+		Name   string
 		Input  any
 		Output []byte
 	}{
-		{bcd.BInt(54), []byte("i54e")},
-		{bcd.BString("AnaSofia"), []byte("8:AnaSofia")},
-		{bcd.BString(""), []byte("0:")},
+		{
+			Name:   "encode int",
+			Input:  bcd.BInt(54),
+			Output: []byte("i54e"),
+		},
+		{
+			Name:   "encode string",
+			Input:  bcd.BString("AnaSofia"),
+			Output: []byte("8:AnaSofia"),
+		},
+		{
+			Name:   "encode empty string",
+			Input:  bcd.BString(""),
+			Output: []byte("0:"),
+		},
 	}
 
 	for _, tc := range testCases {
-		buffer := &bytes.Buffer{}
-		err := bcd.NewEncoder(buffer).EncodeAny(tc.Input)
-		helpers.AssertNoError(t, err)
-		helpers.AssertEqual(t, tc.Output, buffer.Bytes())
+		t.Run(tc.Name, func(t *testing.T) {
+			buffer := &bytes.Buffer{}
+			err := bcd.NewEncoder(buffer).EncodeAny(tc.Input)
+			helpers.AssertNoError(t, err)
+			helpers.AssertEqual(t, tc.Output, buffer.Bytes())
+		})
 	}
 }
 
 func TestEncodeAnyErrors(t *testing.T) {
-	t.Run("return ErrInvalidType for types not supported by the encoder", func(t *testing.T) {
+	t.Run("return ErrUnsupportedType for types not supported by the encoder", func(t *testing.T) {
 		input := 54
 		err := bcd.NewEncoder(&bytes.Buffer{}).EncodeAny(input)
 		helpers.AssertError(t, err, bcd.ErrUnsupportedType)
