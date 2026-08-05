@@ -11,6 +11,8 @@ import (
 )
 
 var ErrInvalidStringLength = errors.New("invalid length for bencoded string")
+var ErrInvalidIntegerValue = errors.New("invalid value for bencoded integer")
+var ErrMalformedInput = errors.New("malformed input")
 
 const StringMaxLength = 64 * 1024 * 1024
 
@@ -45,6 +47,40 @@ func DecodeString(reader *bufio.Reader) (data []byte, err error) {
 	data = make([]byte, length)
 	_, err = io.ReadFull(reader, data)
 	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+		return
+	}
+
+	return
+}
+
+func DecodeInt(reader *bufio.Reader) (value int, err error) {
+	got, err := reader.ReadByte()
+	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+		return
+	} else if got != 'i' {
+		err = fmt.Errorf("%w: a bencoded integer must start with byte `i`", ErrMalformedInput)
+		return
+	}
+
+	data, err := reader.ReadString('e')
+	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+		return
+	}
+
+	data = data[:len(data)-1]
+	value, err = strconv.Atoi(data)
+	if err != nil {
+		err = fmt.Errorf("%w: %w", ErrInvalidIntegerValue, err)
+		return
+	}
+
+	// by now, we are sure that the raw value was a valid integer
+	// due to the use of Atoi, but there is still the possibility
+	// of the input to contain leading zeros or the negative zero
+	// (-0 or -00). Fortunately, this is quite easy to verify
+	valueAsString := strconv.Itoa(value)
+	if valueAsString != data {
+		err = fmt.Errorf("%w (data=%q)", ErrInvalidIntegerValue, data)
 		return
 	}
 
