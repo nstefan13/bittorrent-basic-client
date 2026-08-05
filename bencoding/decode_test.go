@@ -52,6 +52,9 @@ func TestDecodeStringErrors(t *testing.T) {
 		{Input: []byte("10000:too_small_of_a_string"), Error: io.ErrUnexpectedEOF},
 		{Input: []byte(":"), Error: bencoding.ErrInvalidStringLength},
 		{Input: []byte("-1:"), Error: bencoding.ErrInvalidStringLength},
+		{Input: []byte(" 5:Sofia"), Error: bencoding.ErrInvalidStringLength},
+		{Input: []byte("5 :Sofia"), Error: bencoding.ErrInvalidStringLength},
+		{Input: []byte("17179869184:Sofia"), Error: bencoding.ErrInvalidStringLength},
 	}
 
 	for _, tc := range testCases {

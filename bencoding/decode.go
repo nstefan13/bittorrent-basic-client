@@ -12,12 +12,17 @@ import (
 
 var ErrInvalidStringLength = errors.New("invalid length for bencoded string")
 
+const StringMaxLength = 64 * 1024 * 1024
+
 // Decode a bencoded string and returns it as an array of bytes.
 // The function expects the string to be at the beginning of the stream
 // and respect the BEP3 specifications. Any io.EOF erros encountered during
 // parsing are treated as an io.UnexpectedEOF.
-// Returns Atoi-specific errors (like strconv.ErrSyntax or strconv.ErrRange) if
-// the length is invalid.
+// If the length is invalid, Returns Atoi-specific
+// errors (like strconv.ErrSyntax or strconv.ErrRange) wrapped alongside
+// ErrInvalidStringLength.
+// To prevent attackers from allocating huge chunks of memory for strings,
+// the functions caps the length at 64MB (arbitrary number, not configurable)
 func DecodeString(reader *bufio.Reader) (data []byte, err error) {
 	prefix, err := reader.ReadString(':')
 	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
@@ -31,6 +36,9 @@ func DecodeString(reader *bufio.Reader) (data []byte, err error) {
 		return
 	} else if length < 0 {
 		err = fmt.Errorf("%w: length cannot be negative", ErrInvalidStringLength)
+		return
+	} else if length > StringMaxLength {
+		err = fmt.Errorf("%w: length larger than the allowed limit of %d bytes", ErrInvalidStringLength, StringMaxLength)
 		return
 	}
 
