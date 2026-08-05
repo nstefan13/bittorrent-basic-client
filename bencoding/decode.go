@@ -25,6 +25,22 @@ type (
 
 const StringMaxLength = 64 * 1024 * 1024
 
+type Decoder struct {
+	_trackedReader *TrackedReader // only Offset() should use it
+	reader         *bufio.Reader
+}
+
+func NewDecoder(reader io.Reader) (decoder *Decoder) {
+	decoder = &Decoder{}
+	decoder._trackedReader = &TrackedReader{reader: reader}
+	decoder.reader = bufio.NewReader(decoder._trackedReader)
+	return decoder
+}
+
+func (d *Decoder) Offset() int {
+	return d._trackedReader.offset - d.reader.Buffered()
+}
+
 // Decode a bencoded string and returns it as an array of bytes.
 // The function expects the string to be at the beginning of the stream
 // and respect the BEP3 specifications. Any io.EOF erros encountered during
@@ -34,31 +50,34 @@ const StringMaxLength = 64 * 1024 * 1024
 // ErrInvalidStringLength.
 // To prevent attackers from allocating huge chunks of memory for strings,
 // the functions caps the length at 64MB (arbitrary number, not configurable)
-func DecodeString(reader *bufio.Reader) (data BString, err error) {
-	prefix, err := reader.ReadString(':')
+func (d *Decoder) DecodeString() (data BString, err error) {
+	startingOffset := d.Offset()
+	prefix, err := d.reader.ReadString(':')
 	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+		err = fmt.Errorf("parsing BString starting at offset %d: %w", startingOffset, err)
 		return
 	}
 
 	prefix = prefix[:len(prefix)-1]
 	length, err := strconv.Atoi(prefix)
 	if err != nil {
-		err = fmt.Errorf("%w: %w", ErrInvalidStringLength, err)
+		err = fmt.Errorf("parsing BString starting at offset %d: %w: %w", startingOffset, ErrInvalidStringLength, err)
 		return
 	}
 	if length < 0 {
-		err = fmt.Errorf("%w: length cannot be negative", ErrInvalidStringLength)
+		err = fmt.Errorf("parsing BString starting at offset %d: %w: length cannot be negative", startingOffset, ErrInvalidStringLength)
 		return
 	}
 	if length > StringMaxLength {
-		err = fmt.Errorf("%w: length larger than the allowed limit of %d bytes", ErrInvalidStringLength, StringMaxLength)
+		err = fmt.Errorf("parsing BString starting at offset %d: %w: length larger than the allowed limit of %d bytes", startingOffset, ErrInvalidStringLength, StringMaxLength)
 		return
 	}
 
 	buffer := make([]byte, length)
-	_, err = io.ReadFull(reader, buffer)
+	_, err = io.ReadFull(d.reader, buffer)
 	data = BString(buffer)
 	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+		err = fmt.Errorf("parsing BString starting at offset %d: %w", startingOffset, err)
 		return
 	}
 
@@ -70,25 +89,28 @@ func DecodeString(reader *bufio.Reader) (data BString, err error) {
 // and an ErrMalformedInput is returned. If the value of the
 // integered is invalid ErrInvalidIntegerValue will be returned,
 // optionally alongside some Atoi-specific errors
-func DecodeInt(reader *bufio.Reader) (value BInt, err error) {
-	got, err := reader.ReadByte()
+func (d *Decoder) DecodeInt() (value BInt, err error) {
+	startingOffset := d.Offset()
+	got, err := d.reader.ReadByte()
 	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+		err = fmt.Errorf("parsing BInt starting at offset %d: %w", startingOffset, err)
 		return
 	}
 	if got != 'i' {
-		err = fmt.Errorf("%w: a bencoded integer must start with byte `i`", ErrMalformedInput)
+		err = fmt.Errorf("parsing BInt starting at offset %d: %w: a bencoded integer must start with byte `i`", startingOffset, ErrMalformedInput)
 		return
 	}
 
-	data, err := reader.ReadString('e')
+	data, err := d.reader.ReadString('e')
 	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+		err = fmt.Errorf("parsing BInt starting at offset %d: %w", startingOffset, err)
 		return
 	}
 
 	data = data[:len(data)-1]
 	valueAsInt, err := strconv.Atoi(data)
 	if err != nil {
-		err = fmt.Errorf("%w: %w", ErrInvalidIntegerValue, err)
+		err = fmt.Errorf("parsing BInt starting at offset %d: %w: %w", startingOffset, ErrInvalidIntegerValue, err)
 		return
 	}
 
@@ -98,7 +120,7 @@ func DecodeInt(reader *bufio.Reader) (value BInt, err error) {
 	// (-0 or -00). Fortunately, this is quite easy to verify
 	valueAsString := strconv.Itoa(valueAsInt)
 	if valueAsString != data {
-		err = fmt.Errorf("%w (data=%q)", ErrInvalidIntegerValue, data)
+		err = fmt.Errorf("parsing BInt starting at offset %d: %w (data=%q)", startingOffset, ErrInvalidIntegerValue, data)
 		return
 	}
 
@@ -110,27 +132,29 @@ func DecodeInt(reader *bufio.Reader) (value BInt, err error) {
 // doesn't start with an `l` the stream is considered malformed
 // and an ErrMalformedInput is returned. Any errors encountered
 // while parsing the elements of the list are returned to the caller
-func DecodeList(reader *bufio.Reader) (list BList, err error) {
+func (d *Decoder) DecodeList() (list BList, err error) {
+	startingOffset := d.Offset()
 	list = make([]any, 0)
-	got, err := reader.ReadByte()
+	got, err := d.reader.ReadByte()
 	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+		err = fmt.Errorf("parsing BList starting at offset %d: %w", startingOffset, err)
 		return
 	}
 	if got != 'l' {
-		err = fmt.Errorf("%w: a bencoded list must start with byte `l`", ErrMalformedInput)
+		err = fmt.Errorf("parsing BList starting at offset %d: %w: a bencoded list must start with byte `l`", startingOffset, ErrMalformedInput)
 		return
 	}
 
 	for {
-		yes, err := areWeFinished(reader)
+		yes, err := areWeFinished(d.reader)
 		if err = helpers.TreatEOFAsUnexpected(err); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parsing BList starting at offset %d (offset after error triggered: %d): %w", startingOffset, d.Offset(), err)
 		}
 		if yes {
 			break
 		}
 
-		element, err := DecodeAny(reader)
+		element, err := d.DecodeAny()
 		if err != nil {
 			return nil, err
 		}
@@ -141,7 +165,7 @@ func DecodeList(reader *bufio.Reader) (list BList, err error) {
 	// This will read the last 'e' (and we can
 	// surely read it because previously we peeked
 	// at it)
-	reader.ReadByte()
+	d.reader.ReadByte()
 
 	return
 }
@@ -151,33 +175,35 @@ func DecodeList(reader *bufio.Reader) (list BList, err error) {
 // and an ErrMalformedInput is returned. Any errors encountered
 // while parsing the values and keys of the dictionary are returned
 // to the caller
-func DecodeDict(reader *bufio.Reader) (dict BDict, err error) {
+func (d *Decoder) DecodeDict() (dict BDict, err error) {
+	startingOffset := d.Offset()
 	dict = make(map[string]any)
 
-	got, err := reader.ReadByte()
+	got, err := d.reader.ReadByte()
 	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+		err = fmt.Errorf("parsing BDict starting at offset %d: %w", startingOffset, err)
 		return
 	}
 	if got != 'd' {
-		err = fmt.Errorf("%w: a bencoded dictionary must start with byte `d`", ErrMalformedInput)
+		err = fmt.Errorf("parsing BDict starting at offset %d: %w: a bencoded dictionary must start with byte `d`", startingOffset, ErrMalformedInput)
 		return
 	}
 
 	for {
-		yes, err := areWeFinished(reader)
+		yes, err := areWeFinished(d.reader)
 		if err = helpers.TreatEOFAsUnexpected(err); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parsing BDict starting at offset %d (offset after error triggered: %d): %w", startingOffset, d.Offset(), err)
 		}
 		if yes {
 			break
 		}
 
-		key, err := DecodeString(reader)
+		key, err := d.DecodeString()
 		if err != nil {
 			return nil, err
 		}
 
-		value, err := DecodeAny(reader)
+		value, err := d.DecodeAny()
 		if err != nil {
 			return nil, err
 		}
@@ -186,7 +212,7 @@ func DecodeDict(reader *bufio.Reader) (dict BDict, err error) {
 	}
 
 	// no need to check for erros here
-	reader.ReadByte()
+	d.reader.ReadByte()
 
 	return
 }
@@ -205,8 +231,8 @@ func DecodeDict(reader *bufio.Reader) (dict BDict, err error) {
 // returns an ErrMalformedInput. If it successfully deduces the type
 // of data, it calls the corresponding Decode* function and forwards
 // the return values (including any errors)
-func DecodeAny(reader *bufio.Reader) (any, error) {
-	buffer, err := reader.Peek(1)
+func (d *Decoder) DecodeAny() (any, error) {
+	buffer, err := d.reader.Peek(1)
 	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
 		return nil, err
 	}
@@ -214,19 +240,19 @@ func DecodeAny(reader *bufio.Reader) (any, error) {
 	discriminator := buffer[0]
 
 	if discriminator == 'i' {
-		return DecodeInt(reader)
+		return d.DecodeInt()
 	}
 	if discriminator == 'l' {
-		return DecodeList(reader)
+		return d.DecodeList()
 	}
 	if discriminator == 'd' {
-		return DecodeDict(reader)
+		return d.DecodeDict()
 	}
 	if isDigit(discriminator) {
-		return DecodeString(reader)
+		return d.DecodeString()
 	}
 
-	err = fmt.Errorf("%w: discriminator %q doesn't correspond to any known type", ErrMalformedInput, discriminator)
+	err = fmt.Errorf("parsing error at offset %d: %w: discriminator %q doesn't correspond to any known type", d.Offset(), ErrMalformedInput, discriminator)
 	return nil, err
 }
 

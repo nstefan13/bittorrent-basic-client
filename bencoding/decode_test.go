@@ -1,7 +1,6 @@
 package bencoding_test
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -9,7 +8,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/nstefan13/bittorrent/bencoding"
 	bcd "github.com/nstefan13/bittorrent/bencoding"
 	"github.com/nstefan13/bittorrent/helpers"
 )
@@ -26,10 +24,10 @@ func TestDecodeString(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("decode %q to %q", tc.Input, tc.Output), func(t *testing.T) {
-			reader := newBufferedReader(tc.Input)
+			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
 
 			want := tc.Output
-			got, err := bcd.DecodeString(reader)
+			got, err := decoder.DecodeString()
 
 			assertNoError(t, err)
 			helpers.AssertEqual(t, got, want)
@@ -47,6 +45,7 @@ func TestDecodeStringErrors(t *testing.T) {
 		{Input: []byte("Sofia"), Error: io.ErrUnexpectedEOF},
 		{Input: []byte("5:"), Error: io.ErrUnexpectedEOF},
 		{Input: []byte("10000:too_small_of_a_string"), Error: io.ErrUnexpectedEOF},
+
 		{Input: []byte(":"), Error: bcd.ErrInvalidStringLength},
 		{Input: []byte("-1:"), Error: bcd.ErrInvalidStringLength},
 		{Input: []byte(" 5:Sofia"), Error: bcd.ErrInvalidStringLength},
@@ -56,8 +55,8 @@ func TestDecodeStringErrors(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("returns %q when parsing %q", tc.Error, tc.Input), func(t *testing.T) {
-			reader := newBufferedReader(tc.Input)
-			_, err := bcd.DecodeString(reader)
+			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
+			_, err := decoder.DecodeString()
 			want := tc.Error
 			assertError(t, err, want)
 		})
@@ -75,10 +74,10 @@ func TestDecodeInt(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("decode %q to %d", tc.Input, tc.Output), func(t *testing.T) {
-			reader := newBufferedReader(tc.Input)
+			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
 
 			want := tc.Output
-			got, err := bcd.DecodeInt(reader)
+			got, err := decoder.DecodeInt()
 
 			assertNoError(t, err)
 			if got != want {
@@ -111,8 +110,8 @@ func TestDecodeIntErrors(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("returns %q when parsing %q", tc.Error, tc.Input), func(t *testing.T) {
-			reader := newBufferedReader(tc.Input)
-			_, err := bcd.DecodeInt(reader)
+			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
+			_, err := decoder.DecodeInt()
 			want := tc.Error
 			assertError(t, err, want)
 		})
@@ -135,9 +134,9 @@ func TestDecodeAny(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("decode %s", tc.Input), func(t *testing.T) {
-			reader := newBufferedReader(tc.Input)
+			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
 
-			got, err := bcd.DecodeAny(reader)
+			got, err := decoder.DecodeAny()
 			want := tc.Output
 
 			assertNoError(t, err)
@@ -164,9 +163,9 @@ func TestDecodeAnyErrors(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		reader := newBufferedReader(tc.Input)
+		decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
 
-		_, err := bcd.DecodeAny(reader)
+		_, err := decoder.DecodeAny()
 		want := tc.Err
 		assertError(t, err, want)
 	}
@@ -189,10 +188,10 @@ func TestDecodeList(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("decode %q to %d", tc.Input, tc.Output), func(t *testing.T) {
-			reader := newBufferedReader(tc.Input)
+			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
 
 			want := tc.Output
-			got, err := bcd.DecodeList(reader)
+			got, err := decoder.DecodeList()
 
 			assertNoError(t, err)
 			helpers.AssertEqual(t, want, got)
@@ -219,8 +218,8 @@ func TestDecodeListErrors(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("returns %q when parsing %q", tc.Error, tc.Input), func(t *testing.T) {
-			reader := newBufferedReader(tc.Input)
-			_, err := bcd.DecodeList(reader)
+			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
+			_, err := decoder.DecodeList()
 			want := tc.Error
 			assertError(t, err, want)
 		})
@@ -264,14 +263,10 @@ func TestDecodeDict(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("decode %q to %v", tc.Input, tc.Output), func(t *testing.T) {
-			reader := newBufferedReader(tc.Input)
+			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
 
 			want := tc.Output
-			got, err := bcd.DecodeDict(reader)
-
-			remainig := bytes.Buffer{}
-			reader.WriteTo(&remainig)
-			t.Logf("Remaining buffer: %q", &remainig)
+			got, err := decoder.DecodeDict()
 
 			assertNoError(t, err)
 			helpers.AssertEqual(t, want, got)
@@ -284,19 +279,19 @@ func TestDecodeDictErrors(t *testing.T) {
 		Input []byte
 		Error error
 	}{
-		{[]byte("X"), bencoding.ErrMalformedInput},
+		{[]byte("X"), bcd.ErrMalformedInput},
 
 		{[]byte(""), io.ErrUnexpectedEOF},
 		{[]byte("d"), io.ErrUnexpectedEOF},
 		{[]byte("d4"), io.ErrUnexpectedEOF},
 		{[]byte("d4:"), io.ErrUnexpectedEOF},
-		{[]byte("d4:Sofia"), bencoding.ErrMalformedInput},
+		{[]byte("d4:Sofia"), bcd.ErrMalformedInput},
 	}
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("returns %q when parsing %q", tc.Error, tc.Input), func(t *testing.T) {
-			reader := newBufferedReader(tc.Input)
-			_, err := bcd.DecodeDict(reader)
+			decoder := bcd.NewDecoder(bytes.NewReader(tc.Input))
+			_, err := decoder.DecodeDict()
 			want := tc.Error
 			assertError(t, err, want)
 		})
@@ -305,10 +300,6 @@ func TestDecodeDictErrors(t *testing.T) {
 
 func typeNameOf(value any) string {
 	return reflect.TypeOf(value).Name()
-}
-
-func newBufferedReader(data []byte) *bufio.Reader {
-	return bufio.NewReader(bytes.NewReader(data))
 }
 
 func assertError(t testing.TB, err, want error) {
