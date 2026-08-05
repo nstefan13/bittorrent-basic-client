@@ -32,3 +32,25 @@ func AssertEqual(t testing.TB, expected, got any) {
 		assert.Equal(t, expected, got)
 	}
 }
+
+func AssertNoError(t testing.TB, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("an unexpected error was returned: %q", err)
+	}
+}
+
+func AssertError(t testing.TB, err, want error) {
+	t.Helper()
+	if want == nil {
+		panic("assertError called with `want` set to nil")
+	}
+
+	if err == nil {
+		t.Fatal("expected an error to be returned")
+	}
+
+	if !errors.Is(err, want) {
+		t.Errorf("expected %q, got %q", want, err.Error())
+	}
+}

@@ -20,4 +20,10 @@ During implementations, some tradeoffs were made:
   2. In the real world you will almost never see an int value higher than 2^63-1
   3. Functions that use DecodeInt() will work with a familiar type: int
 
-- DecodeString() doesn't check for the keys to be ordered alphabetically because it is a waste of cpu cycles
+- DecodeString() doesn't check for the keys to be ordered alphabetically
+  Reasoning:
+  1. Because it is a waste of cpu cycles
+
+- The Encode* functions assume they receive a value of type bencoding.B*. If this is not the case, they return an error
+  Reasoning:
+  1. Adding support for arbitrary values (like how json decoder does) is quite difficult and it requires treating a lot of edge cases. Given that I need this package just to perform basic I/O with other peers on the network, a simpler implementation is easier to code, maintain and debug
