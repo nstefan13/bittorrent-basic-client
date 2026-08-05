@@ -19,3 +19,5 @@ During implementations, some tradeoffs were made:
   1. I can parse the string into an int without too much of a hustle using Go's Atoi
   2. In the real world you will almost never see an int value higher than 2^63-1
   3. Functions that use DecodeInt() will work with a familiar type: int
+
+- DecodeString() doesn't check for the keys to be ordered alphabetically because it is a waste of cpu cycles

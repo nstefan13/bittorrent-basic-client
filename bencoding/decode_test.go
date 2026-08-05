@@ -7,21 +7,21 @@ import (
 	"fmt"
 	"io"
 	"reflect"
-	"slices"
 	"testing"
 
-	bencoding "github.com/nstefan13/bittorrent/bencoding"
+	"github.com/nstefan13/bittorrent/bencoding"
+	bcd "github.com/nstefan13/bittorrent/bencoding"
 	"github.com/nstefan13/bittorrent/helpers"
 )
 
 func TestDecodeString(t *testing.T) {
 	testCases := []struct {
 		Input  []byte
-		Output []byte
+		Output bcd.BString
 	}{
-		{Input: []byte("5:SofiaAAA"), Output: []byte("Sofia")},
-		{Input: []byte("3:AnaASASlkDJLJASK"), Output: []byte("Ana")},
-		{Input: []byte("0:"), Output: []byte("")},
+		{Input: []byte("5:SofiaAAA"), Output: bcd.BString("Sofia")},
+		{Input: []byte("3:AnaASASlkDJLJASK"), Output: bcd.BString("Ana")},
+		{Input: []byte("0:"), Output: bcd.BString("")},
 	}
 
 	for _, tc := range testCases {
@@ -29,12 +29,10 @@ func TestDecodeString(t *testing.T) {
 			reader := newBufferedReader(tc.Input)
 
 			want := tc.Output
-			got, err := bencoding.DecodeString(reader)
+			got, err := bcd.DecodeString(reader)
 
 			assertNoError(t, err)
-			if !slices.Equal(got, want) {
-				t.Errorf("expected %q, got %q", want, got)
-			}
+			helpers.AssertEqual(t, got, want)
 		})
 	}
 }
@@ -49,17 +47,17 @@ func TestDecodeStringErrors(t *testing.T) {
 		{Input: []byte("Sofia"), Error: io.ErrUnexpectedEOF},
 		{Input: []byte("5:"), Error: io.ErrUnexpectedEOF},
 		{Input: []byte("10000:too_small_of_a_string"), Error: io.ErrUnexpectedEOF},
-		{Input: []byte(":"), Error: bencoding.ErrInvalidStringLength},
-		{Input: []byte("-1:"), Error: bencoding.ErrInvalidStringLength},
-		{Input: []byte(" 5:Sofia"), Error: bencoding.ErrInvalidStringLength},
-		{Input: []byte("5 :Sofia"), Error: bencoding.ErrInvalidStringLength},
-		{Input: []byte("17179869184:Sofia"), Error: bencoding.ErrInvalidStringLength},
+		{Input: []byte(":"), Error: bcd.ErrInvalidStringLength},
+		{Input: []byte("-1:"), Error: bcd.ErrInvalidStringLength},
+		{Input: []byte(" 5:Sofia"), Error: bcd.ErrInvalidStringLength},
+		{Input: []byte("5 :Sofia"), Error: bcd.ErrInvalidStringLength},
+		{Input: []byte("17179869184:Sofia"), Error: bcd.ErrInvalidStringLength},
 	}
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("returns %q when parsing %q", tc.Error, tc.Input), func(t *testing.T) {
 			reader := newBufferedReader(tc.Input)
-			_, err := bencoding.DecodeString(reader)
+			_, err := bcd.DecodeString(reader)
 			want := tc.Error
 			assertError(t, err, want)
 		})
@@ -69,7 +67,7 @@ func TestDecodeStringErrors(t *testing.T) {
 func TestDecodeInt(t *testing.T) {
 	testCases := []struct {
 		Input  []byte
-		Output bencoding.BInt
+		Output bcd.BInt
 	}{
 		{Input: []byte("i42e<whatever else is there>"), Output: 42},
 		{Input: []byte("i244e<gibberish>"), Output: 244},
@@ -80,7 +78,7 @@ func TestDecodeInt(t *testing.T) {
 			reader := newBufferedReader(tc.Input)
 
 			want := tc.Output
-			got, err := bencoding.DecodeInt(reader)
+			got, err := bcd.DecodeInt(reader)
 
 			assertNoError(t, err)
 			if got != want {
@@ -100,21 +98,21 @@ func TestDecodeIntErrors(t *testing.T) {
 		{Input: []byte("i23"), Error: io.ErrUnexpectedEOF},
 		{Input: []byte("i-123"), Error: io.ErrUnexpectedEOF},
 
-		{Input: []byte("X23"), Error: bencoding.ErrMalformedInput},
+		{Input: []byte("X23"), Error: bcd.ErrMalformedInput},
 
-		{Input: []byte("ie"), Error: bencoding.ErrInvalidIntegerValue},
-		{Input: []byte("i e"), Error: bencoding.ErrInvalidIntegerValue},
-		{Input: []byte("i-+0e"), Error: bencoding.ErrInvalidIntegerValue},
-		{Input: []byte("i-0e"), Error: bencoding.ErrInvalidIntegerValue},
-		{Input: []byte("i-00e"), Error: bencoding.ErrInvalidIntegerValue},
-		{Input: []byte("i-00123e"), Error: bencoding.ErrInvalidIntegerValue},
-		{Input: []byte("i-123.32e"), Error: bencoding.ErrInvalidIntegerValue},
+		{Input: []byte("ie"), Error: bcd.ErrInvalidIntegerValue},
+		{Input: []byte("i e"), Error: bcd.ErrInvalidIntegerValue},
+		{Input: []byte("i-+0e"), Error: bcd.ErrInvalidIntegerValue},
+		{Input: []byte("i-0e"), Error: bcd.ErrInvalidIntegerValue},
+		{Input: []byte("i-00e"), Error: bcd.ErrInvalidIntegerValue},
+		{Input: []byte("i-00123e"), Error: bcd.ErrInvalidIntegerValue},
+		{Input: []byte("i-123.32e"), Error: bcd.ErrInvalidIntegerValue},
 	}
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("returns %q when parsing %q", tc.Error, tc.Input), func(t *testing.T) {
 			reader := newBufferedReader(tc.Input)
-			_, err := bencoding.DecodeInt(reader)
+			_, err := bcd.DecodeInt(reader)
 			want := tc.Error
 			assertError(t, err, want)
 		})
@@ -126,20 +124,20 @@ func TestDecodeAny(t *testing.T) {
 		Input  []byte
 		Output any
 	}{
-		{[]byte("le"), bencoding.BList{}},
-		{[]byte("i42e"), bencoding.BInt(42)},
+		{[]byte("le"), bcd.BList{}},
+		{[]byte("i42e"), bcd.BInt(42)},
 
-		{[]byte("0:"), bencoding.BString("")},
-		{[]byte("3:Ana"), bencoding.BString("Ana")},
+		{[]byte("0:"), bcd.BString("")},
+		{[]byte("3:Ana"), bcd.BString("Ana")},
 
-		{[]byte("l3:anae"), bencoding.BList{bencoding.BString("ana")}},
+		{[]byte("l3:anae"), bcd.BList{bcd.BString("ana")}},
 	}
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("decode %s", tc.Input), func(t *testing.T) {
 			reader := newBufferedReader(tc.Input)
 
-			got, err := bencoding.DecodeAny(reader)
+			got, err := bcd.DecodeAny(reader)
 			want := tc.Output
 
 			assertNoError(t, err)
@@ -161,14 +159,14 @@ func TestDecodeAnyErrors(t *testing.T) {
 		Err   error
 	}{
 		{[]byte(""), io.ErrUnexpectedEOF},
-		{[]byte("X"), bencoding.ErrMalformedInput},
-		{[]byte("ie"), bencoding.ErrInvalidIntegerValue},
+		{[]byte("X"), bcd.ErrMalformedInput},
+		{[]byte("ie"), bcd.ErrInvalidIntegerValue},
 	}
 
 	for _, tc := range testCases {
 		reader := newBufferedReader(tc.Input)
 
-		_, err := bencoding.DecodeAny(reader)
+		_, err := bcd.DecodeAny(reader)
 		want := tc.Err
 		assertError(t, err, want)
 	}
@@ -177,7 +175,7 @@ func TestDecodeAnyErrors(t *testing.T) {
 func TestDecodeList(t *testing.T) {
 	testCases := []struct {
 		Input  []byte
-		Output bencoding.BList
+		Output bcd.BList
 	}{
 		{
 			[]byte("le"),
@@ -185,7 +183,7 @@ func TestDecodeList(t *testing.T) {
 		},
 		{
 			[]byte("li32e3:Anae"),
-			[]any{bencoding.BInt(32), bencoding.BString("Ana")},
+			[]any{bcd.BInt(32), bcd.BString("Ana")},
 		},
 	}
 
@@ -194,7 +192,7 @@ func TestDecodeList(t *testing.T) {
 			reader := newBufferedReader(tc.Input)
 
 			want := tc.Output
-			got, err := bencoding.DecodeList(reader)
+			got, err := bcd.DecodeList(reader)
 
 			assertNoError(t, err)
 			helpers.AssertEqual(t, want, got)
@@ -207,7 +205,7 @@ func TestDecodeListErrors(t *testing.T) {
 		Input []byte
 		Error error
 	}{
-		{[]byte("X"), bencoding.ErrMalformedInput},
+		{[]byte("X"), bcd.ErrMalformedInput},
 
 		{[]byte(""), io.ErrUnexpectedEOF},
 		{[]byte("l"), io.ErrUnexpectedEOF},
@@ -215,14 +213,90 @@ func TestDecodeListErrors(t *testing.T) {
 		{[]byte("li12e"), io.ErrUnexpectedEOF},
 
 		{[]byte("li12e32:e"), io.ErrUnexpectedEOF},
-		{[]byte("li12e:e"), bencoding.ErrMalformedInput},
-		{[]byte("li012ee"), bencoding.ErrInvalidIntegerValue},
+		{[]byte("li12e:e"), bcd.ErrMalformedInput},
+		{[]byte("li012ee"), bcd.ErrInvalidIntegerValue},
 	}
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("returns %q when parsing %q", tc.Error, tc.Input), func(t *testing.T) {
 			reader := newBufferedReader(tc.Input)
-			_, err := bencoding.DecodeList(reader)
+			_, err := bcd.DecodeList(reader)
+			want := tc.Error
+			assertError(t, err, want)
+		})
+	}
+}
+
+func TestDecodeDict(t *testing.T) {
+	testCases := []struct {
+		Input  []byte
+		Output bcd.BDict
+	}{
+		{[]byte("de"), bcd.BDict{}},
+		{
+			[]byte("d3:ana5:sofia4:spaml1:a1:bee"),
+			bcd.BDict{
+				"ana":  bcd.BString("sofia"),
+				"spam": bcd.BList{bcd.BString("a"), bcd.BString("b")},
+			},
+		},
+		{
+			Input: []byte("d4:infod6:lengthi1024e4:pathl4:dir14:dir28:file.txtee4:listl1:ad4:type4:teste1:bee"),
+			Output: bcd.BDict{
+				"info": bcd.BDict{
+					"length": bcd.BInt(1024),
+					"path": bcd.BList{
+						bcd.BString("dir1"),
+						bcd.BString("dir2"),
+						bcd.BString("file.txt"),
+					},
+				},
+				"list": bcd.BList{
+					bcd.BString("a"),
+					bcd.BDict{
+						"type": bcd.BString("test"),
+					},
+					bcd.BString("b"),
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("decode %q to %v", tc.Input, tc.Output), func(t *testing.T) {
+			reader := newBufferedReader(tc.Input)
+
+			want := tc.Output
+			got, err := bcd.DecodeDict(reader)
+
+			remainig := bytes.Buffer{}
+			reader.WriteTo(&remainig)
+			t.Logf("Remaining buffer: %q", &remainig)
+
+			assertNoError(t, err)
+			helpers.AssertEqual(t, want, got)
+		})
+	}
+}
+
+func TestDecodeDictErrors(t *testing.T) {
+	testCases := []struct {
+		Input []byte
+		Error error
+	}{
+		{[]byte("X"), bencoding.ErrMalformedInput},
+
+		{[]byte(""), io.ErrUnexpectedEOF},
+		{[]byte("d"), io.ErrUnexpectedEOF},
+		{[]byte("d4"), io.ErrUnexpectedEOF},
+		{[]byte("d4:"), io.ErrUnexpectedEOF},
+		{[]byte("d4:Sofia"), bencoding.ErrMalformedInput},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("returns %q when parsing %q", tc.Error, tc.Input), func(t *testing.T) {
+			reader := newBufferedReader(tc.Input)
+			_, err := bcd.DecodeDict(reader)
 			want := tc.Error
 			assertError(t, err, want)
 		})
@@ -238,6 +312,7 @@ func newBufferedReader(data []byte) *bufio.Reader {
 }
 
 func assertError(t testing.TB, err, want error) {
+	t.Helper()
 	if want == nil {
 		panic("assertError called with `want` set to nil")
 	}
@@ -252,6 +327,7 @@ func assertError(t testing.TB, err, want error) {
 }
 
 func assertNoError(t testing.TB, err error) {
+	t.Helper()
 	if err != nil {
 		t.Fatalf("an unexpected error was returned: %q", err)
 	}

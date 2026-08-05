@@ -18,7 +18,7 @@ var (
 
 type (
 	BInt    int
-	BString []byte
+	BString string
 	BList   []any
 	BDict   map[string]any
 )
@@ -29,7 +29,7 @@ const StringMaxLength = 64 * 1024 * 1024
 // The function expects the string to be at the beginning of the stream
 // and respect the BEP3 specifications. Any io.EOF erros encountered during
 // parsing are treated as an io.UnexpectedEOF.
-// If the length is invalid, Returns Atoi-specific
+// If the length is invalid it returns Atoi-specific
 // errors (like strconv.ErrSyntax or strconv.ErrRange) wrapped alongside
 // ErrInvalidStringLength.
 // To prevent attackers from allocating huge chunks of memory for strings,
@@ -45,16 +45,19 @@ func DecodeString(reader *bufio.Reader) (data BString, err error) {
 	if err != nil {
 		err = fmt.Errorf("%w: %w", ErrInvalidStringLength, err)
 		return
-	} else if length < 0 {
+	}
+	if length < 0 {
 		err = fmt.Errorf("%w: length cannot be negative", ErrInvalidStringLength)
 		return
-	} else if length > StringMaxLength {
+	}
+	if length > StringMaxLength {
 		err = fmt.Errorf("%w: length larger than the allowed limit of %d bytes", ErrInvalidStringLength, StringMaxLength)
 		return
 	}
 
-	data = make([]byte, length)
-	_, err = io.ReadFull(reader, data)
+	buffer := make([]byte, length)
+	_, err = io.ReadFull(reader, buffer)
+	data = BString(buffer)
 	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
 		return
 	}
@@ -62,11 +65,17 @@ func DecodeString(reader *bufio.Reader) (data BString, err error) {
 	return
 }
 
+// Parses an integer in the bencoding format. If the sequence
+// doesn't start with an `i` the stream is considered malformed
+// and an ErrMalformedInput is returned. If the value of the
+// integered is invalid ErrInvalidIntegerValue will be returned,
+// optionally alongside some Atoi-specific errors
 func DecodeInt(reader *bufio.Reader) (value BInt, err error) {
 	got, err := reader.ReadByte()
 	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
 		return
-	} else if got != 'i' {
+	}
+	if got != 'i' {
 		err = fmt.Errorf("%w: a bencoded integer must start with byte `i`", ErrMalformedInput)
 		return
 	}
@@ -97,12 +106,17 @@ func DecodeInt(reader *bufio.Reader) (value BInt, err error) {
 	return
 }
 
+// Parses a list in the bencoding format. If the sequence
+// doesn't start with an `l` the stream is considered malformed
+// and an ErrMalformedInput is returned. Any errors encountered
+// while parsing the elements of the list are returned to the caller
 func DecodeList(reader *bufio.Reader) (list BList, err error) {
 	list = make([]any, 0)
 	got, err := reader.ReadByte()
 	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
 		return
-	} else if got != 'l' {
+	}
+	if got != 'l' {
 		err = fmt.Errorf("%w: a bencoded list must start with byte `l`", ErrMalformedInput)
 		return
 	}
@@ -110,18 +124,69 @@ func DecodeList(reader *bufio.Reader) (list BList, err error) {
 	for {
 		yes, err := areWeFinished(reader)
 		if err = helpers.TreatEOFAsUnexpected(err); err != nil {
-			return []any{}, err
-		} else if yes {
+			return nil, err
+		}
+		if yes {
 			break
 		}
 
 		element, err := DecodeAny(reader)
-		if err = helpers.TreatEOFAsUnexpected(err); err != nil {
-			return []any{}, err
+		if err != nil {
+			return nil, err
 		}
 
 		list = append(list, element)
 	}
+
+	// This will read the last 'e' (and we can
+	// surely read it because previously we peeked
+	// at it)
+	reader.ReadByte()
+
+	return
+}
+
+// Parses a dictionary in the bencoding format. If the sequence
+// doesn't start with an `d` the stream is considered malformed
+// and an ErrMalformedInput is returned. Any errors encountered
+// while parsing the values and keys of the dictionary are returned
+// to the caller
+func DecodeDict(reader *bufio.Reader) (dict BDict, err error) {
+	dict = make(map[string]any)
+
+	got, err := reader.ReadByte()
+	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+		return
+	}
+	if got != 'd' {
+		err = fmt.Errorf("%w: a bencoded dictionary must start with byte `d`", ErrMalformedInput)
+		return
+	}
+
+	for {
+		yes, err := areWeFinished(reader)
+		if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+			return nil, err
+		}
+		if yes {
+			break
+		}
+
+		key, err := DecodeString(reader)
+		if err != nil {
+			return nil, err
+		}
+
+		value, err := DecodeAny(reader)
+		if err != nil {
+			return nil, err
+		}
+
+		dict[string(key)] = value
+	}
+
+	// no need to check for erros here
+	reader.ReadByte()
 
 	return
 }
@@ -150,19 +215,27 @@ func DecodeAny(reader *bufio.Reader) (any, error) {
 
 	if discriminator == 'i' {
 		return DecodeInt(reader)
-	} else if discriminator == 'l' {
-		return DecodeList(reader)
-	} else if isDigit(discriminator) {
-		return DecodeString(reader)
-	} else {
-		err := fmt.Errorf("%w: discriminator %q doesn't correspond to any known type", ErrMalformedInput, discriminator)
-		return nil, err
 	}
+	if discriminator == 'l' {
+		return DecodeList(reader)
+	}
+	if discriminator == 'd' {
+		return DecodeDict(reader)
+	}
+	if isDigit(discriminator) {
+		return DecodeString(reader)
+	}
+
+	err = fmt.Errorf("%w: discriminator %q doesn't correspond to any known type", ErrMalformedInput, discriminator)
+	return nil, err
 }
 
+// Checks to see if the next byte is `e` (signaling the
+// end of a list or a dictionary). It also forwards
+// any io errors received
 func areWeFinished(reader *bufio.Reader) (bool, error) {
 	buffer, err := reader.Peek(1)
-	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+	if err != nil {
 		return true, err
 	}
 	mark := buffer[0]
