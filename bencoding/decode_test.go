@@ -19,6 +19,7 @@ func TestDecodeString(t *testing.T) {
 	}{
 		{Input: []byte("5:SofiaAAA"), Output: bcd.BString("Sofia")},
 		{Input: []byte("3:AnaASASlkDJLJASK"), Output: bcd.BString("Ana")},
+		{Input: []byte("3:\x00\x01\x03"), Output: bcd.BString("\x00\x01\x03")},
 		{Input: []byte("0:"), Output: bcd.BString("")},
 	}
 
