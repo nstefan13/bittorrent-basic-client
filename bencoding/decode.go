@@ -97,6 +97,35 @@ func DecodeInt(reader *bufio.Reader) (value BInt, err error) {
 	return
 }
 
+func DecodeList(reader *bufio.Reader) (list BList, err error) {
+	list = make([]any, 0)
+	got, err := reader.ReadByte()
+	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+		return
+	} else if got != 'l' {
+		err = fmt.Errorf("%w: a bencoded list must start with byte `l`", ErrMalformedInput)
+		return
+	}
+
+	for {
+		yes, err := areWeFinished(reader)
+		if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+			return []any{}, err
+		} else if yes {
+			break
+		}
+
+		element, err := DecodeAny(reader)
+		if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+			return []any{}, err
+		}
+
+		list = append(list, element)
+	}
+
+	return
+}
+
 // Attempts to decode the beggining of the stream into one of
 // the 4 types provided by the bencoding specifications. The
 // underlying object it returns is:
@@ -121,12 +150,23 @@ func DecodeAny(reader *bufio.Reader) (any, error) {
 
 	if discriminator == 'i' {
 		return DecodeInt(reader)
+	} else if discriminator == 'l' {
+		return DecodeList(reader)
 	} else if isDigit(discriminator) {
 		return DecodeString(reader)
 	} else {
 		err := fmt.Errorf("%w: discriminator %q doesn't correspond to any known type", ErrMalformedInput, discriminator)
 		return nil, err
 	}
+}
+
+func areWeFinished(reader *bufio.Reader) (bool, error) {
+	buffer, err := reader.Peek(1)
+	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+		return true, err
+	}
+	mark := buffer[0]
+	return mark == 'e', err
 }
 
 func isDigit(b byte) bool {

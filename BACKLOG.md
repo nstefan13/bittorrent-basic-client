@@ -6,7 +6,9 @@
           (so we stop using magical constants)
     - [x] error for EOF
     - [x] forward errors
-  - [ ] Lists
+  - [x] Lists
+    - [x] Errors for areWeFinished
+    - [x] Update DecodeAny
   - [ ] Dictionaries
 
 ## Later

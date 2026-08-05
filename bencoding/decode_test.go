@@ -126,17 +126,23 @@ func TestDecodeAny(t *testing.T) {
 		Input  []byte
 		Output any
 	}{
+		{[]byte("le"), bencoding.BList{}},
 		{[]byte("i42e"), bencoding.BInt(42)},
-		{[]byte("3:Ana"), bencoding.BString([]byte("Ana"))},
-		{[]byte("0:"), bencoding.BString([]byte(""))},
+
+		{[]byte("0:"), bencoding.BString("")},
+		{[]byte("3:Ana"), bencoding.BString("Ana")},
+
+		{[]byte("l3:anae"), bencoding.BList{bencoding.BString("ana")}},
 	}
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("decode %s", tc.Input), func(t *testing.T) {
 			reader := newBufferedReader(tc.Input)
 
-			got, _ := bencoding.DecodeAny(reader)
+			got, err := bencoding.DecodeAny(reader)
 			want := tc.Output
+
+			assertNoError(t, err)
 
 			actualTypeName := typeNameOf(got)
 			expectedTypeName := typeNameOf(tc.Output)
@@ -165,6 +171,61 @@ func TestDecodeAnyErrors(t *testing.T) {
 		_, err := bencoding.DecodeAny(reader)
 		want := tc.Err
 		assertError(t, err, want)
+	}
+}
+
+func TestDecodeList(t *testing.T) {
+	testCases := []struct {
+		Input  []byte
+		Output bencoding.BList
+	}{
+		{
+			[]byte("le"),
+			[]any{},
+		},
+		{
+			[]byte("li32e3:Anae"),
+			[]any{bencoding.BInt(32), bencoding.BString("Ana")},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("decode %q to %d", tc.Input, tc.Output), func(t *testing.T) {
+			reader := newBufferedReader(tc.Input)
+
+			want := tc.Output
+			got, err := bencoding.DecodeList(reader)
+
+			assertNoError(t, err)
+			helpers.AssertEqual(t, want, got)
+		})
+	}
+}
+
+func TestDecodeListErrors(t *testing.T) {
+	testCases := []struct {
+		Input []byte
+		Error error
+	}{
+		{[]byte("X"), bencoding.ErrMalformedInput},
+
+		{[]byte(""), io.ErrUnexpectedEOF},
+		{[]byte("l"), io.ErrUnexpectedEOF},
+		{[]byte("li12"), io.ErrUnexpectedEOF},
+		{[]byte("li12e"), io.ErrUnexpectedEOF},
+
+		{[]byte("li12e32:e"), io.ErrUnexpectedEOF},
+		{[]byte("li12e:e"), bencoding.ErrMalformedInput},
+		{[]byte("li012ee"), bencoding.ErrInvalidIntegerValue},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("returns %q when parsing %q", tc.Error, tc.Input), func(t *testing.T) {
+			reader := newBufferedReader(tc.Input)
+			_, err := bencoding.DecodeList(reader)
+			want := tc.Error
+			assertError(t, err, want)
+		})
 	}
 }
 
