@@ -1,8 +1,6 @@
 # BENCODING
 
-Given the current scope of this project, I concern myself with only implementing the decoder.
-
-There are two main approaches: a recursion-based decoder or a state-machine-based decoder.
+There are two main approaches for implementing the decoder: a recursion-based decoder or a state-machine-based decoder.
 
 The first approach is slower (due to the recursion) and can cause a stack overflow if the decoded structure is deeply nested. However, it is much easier to implement.
 
@@ -27,3 +25,9 @@ During implementations, some tradeoffs were made:
 - The Encode* functions assume they receive a value of type bencoding.B*. If this is not the case, they return an error
   Reasoning:
   1. Adding support for arbitrary values (like how json decoder does) is quite difficult and it requires treating a lot of edge cases. Given that I need this package just to perform basic I/O with other peers on the network, a simpler implementation is easier to code, maintain and debug
+
+# MetaInfo Parsing
+
+After I've implemented the bencoding decoder (and encoder) I started working on the parser for MetaInfo. I chose to simply parse the stream into a BDict and then map all the entries in there to an actual struct. That was tedious since you have to do typechecks at every step of the way and the code quickly becomes convoluted. I could've implemented a custom mapper that takes as input a `any` and a pointer to a struct and using the magic of reflection it populates it, but this is so error prone and so out of scope for this project that I dediced I better stick with the manual typechecking.
+
+After some research I found `go-vip/mapstructure`, which seems to do what I need: map `any` to a concrete struct. If the need later arises, I will for sure use it, but at the moment the code I wrote is quite robust and ready-to-use, so I am not going to refactor it.

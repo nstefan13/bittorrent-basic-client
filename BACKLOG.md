@@ -10,10 +10,11 @@
     - [x] Errors for areWeFinished
     - [x] Update DecodeAny
   - [x] Dictionaries
-  - [ ] Refactor
+  - [x] Refactor
     - [x] Return nil for the value when you have an error
     - [x] Parsing list: forward errors
     - [x] No more else if's
+- [x] Metainfo Parser
 
 ## Later
 
