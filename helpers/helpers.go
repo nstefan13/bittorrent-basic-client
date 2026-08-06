@@ -28,7 +28,7 @@ func AssertEqual(t testing.TB, expected, got any) {
 	typeOfString := reflect.TypeFor[string]().Kind()
 
 	if typeOfString == typeOfExpected && typeOfExpected == typeOfGot {
-		assert.Equal(t, fmt.Sprintf("%q", expected), fmt.Sprintf("%q", expected))
+		assert.Equal(t, fmt.Sprintf("%q", expected), fmt.Sprintf("%q", got))
 	} else {
 		assert.Equal(t, expected, got)
 	}

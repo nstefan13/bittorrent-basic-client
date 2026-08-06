@@ -2,6 +2,7 @@ package parsers
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"errors"
 	"fmt"
 	"io"
@@ -118,7 +119,8 @@ func (i *InfoDict) InfoHash() string {
 	}
 
 	encoder.EncodeDict(dict)
-	return buffer.String()
+	hash := sha1.Sum(buffer.Bytes())
+	return string(hash[:])
 }
 
 // ParseMetaInfo decodes a bencoded dictionary from the provided io.Reader stream
