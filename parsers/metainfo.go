@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"reflect"
 
 	bcd "github.com/nstefan13/bittorrent/bencoding"
@@ -53,7 +54,7 @@ type File struct {
 type MetaInfo struct {
 	// announce
 	// The URL of a tracker
-	TrackerURL string
+	TrackerURL url.URL
 
 	// info
 	Info InfoDict
@@ -91,14 +92,31 @@ func (i *InfoDict) IsMultiFile() bool {
 	return len(i.Files) > 0
 }
 
-// Decodes the metainfo dictionary encoded in the provided
-// stream and maps it to a MetaInfo struct
+// ParseMetaInfo decodes a bencoded dictionary from the provided io.Reader stream
+// and maps its fields into a strongly-typed MetaInfo struct.
+//
+// Error Handling:
+//   - If an error occurs during initial bencode decoding (e.g., malformed syntax or
+//     unexpected EOF), the underlying bencoding decoder error is wrapped and returned.
+//   - If bencode decoding succeeds but the dictionary violates the BitTorrent metainfo
+//     specification, a wrapped ErrMalformedMetaInfo is returned.
+//
+// Validation & Specification Requirements:
+//   - The root dictionary must contain a string `announce` (tracker URL) and an `info` dictionary.
+//   - The `info` dictionary must contain `name` (string), `piece length` (integer), and `pieces` (string).
+//   - Mode exclusivity: The `info` dictionary must contain EITHER `length` (single-file mode)
+//     OR `files` (multi-file mode), but never both nor neither.
+//   - Multi-file mode: Each element in `files` must be a dictionary with a valid integer `length`
+//     and a non-empty list of string path components in `path`.
+//
+// Returned errors wrap sentinel errors such as ErrMalformedMetaInfo, ErrKeyNotFound, or
+// ErrTypeMismatch, allowing callers to inspect specific failure conditions using errors.Is.
 func ParseMetaInfo(reader io.Reader) (metaInfo *MetaInfo, err error) {
 	metaInfo = &MetaInfo{}
 	decoder := bcd.NewDecoder(reader)
 	dict, err := decoder.DecodeDict()
 	if err != nil {
-		err = &MalformedMetaInfoError{err}
+		err = fmt.Errorf("error while decoding the metainfo dictionary: %w", err)
 		return
 	}
 
@@ -107,7 +125,12 @@ func ParseMetaInfo(reader io.Reader) (metaInfo *MetaInfo, err error) {
 		err = &MalformedMetaInfoError{err}
 		return
 	}
-	metaInfo.TrackerURL = string(announce)
+	announceAsURL, err := url.Parse(string(announce))
+	if err != nil || announceAsURL.Scheme == "" || announceAsURL.Host == "" {
+		err = fmt.Errorf("%w: `announce` is an invalid URL", ErrMalformedMetaInfo)
+		return
+	}
+	metaInfo.TrackerURL = *announceAsURL
 
 	info, err := extractValue[bcd.BDict](dict, "info")
 	if err != nil {
@@ -200,6 +223,15 @@ func ParseMetaInfo(reader io.Reader) (metaInfo *MetaInfo, err error) {
 	return
 }
 
+// extractValue retrieves the value associated with key from the bencode dictionary dict
+// and safely asserts its type to ValueType (such as bcd.BString, bcd.BInt, bcd.BDict, or bcd.BList).
+//
+// It is used throughout ParseMetaInfo to eliminate repetitive key lookup and type assertion boilerplate.
+//
+// Returns:
+//   - KeyNotFoundError (unwrapping to ErrKeyNotFound) if key is missing from dict.
+//   - An error wrapping ErrTypeMismatch if key exists but holds a value of a different bencode type,
+//     then the one specified in `ValueType`
 func extractValue[ValueType any](dict bcd.BDict, key string) (value ValueType, err error) {
 	untypedValue, alreadyThere := dict[key]
 	if !alreadyThere {

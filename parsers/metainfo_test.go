@@ -2,8 +2,11 @@ package parsers_test
 
 import (
 	"bytes"
+	"fmt"
+	"net/url"
 	"testing"
 
+	bcd "github.com/nstefan13/bittorrent/bencoding"
 	"github.com/nstefan13/bittorrent/helpers"
 	"github.com/nstefan13/bittorrent/parsers"
 )
@@ -18,7 +21,7 @@ func TestParseMetaInfo(t *testing.T) {
 			name:    "successfully parse a valid torrent in single file mode",
 			torrent: []byte("d8:announce35:udp://tracker.openbittorrent.com:804:infod6:lengthi1024e4:name8:test.txt12:piece lengthi16384e6:pieces20:12345678901234567890ee"),
 			want: &parsers.MetaInfo{
-				TrackerURL: "udp://tracker.openbittorrent.com:80",
+				TrackerURL: urlFromString("udp://tracker.openbittorrent.com:80"),
 				Info: parsers.InfoDict{
 					Name:        "test.txt",
 					Length:      1024,                   // 1 KB file
@@ -31,7 +34,7 @@ func TestParseMetaInfo(t *testing.T) {
 			name:    "successfully parse a valid torrent in multiple file mode",
 			torrent: []byte("d8:announce35:udp://tracker.openbittorrent.com:804:infod5:filesld6:lengthi1024e4:pathl4:dir18:file.txteed6:lengthi2048e4:pathl4:dir29:image.pngeee4:name9:my_folder12:piece lengthi16384e6:pieces20:12345678901234567890ee"),
 			want: &parsers.MetaInfo{
-				TrackerURL: "udp://tracker.openbittorrent.com:80",
+				TrackerURL: urlFromString("udp://tracker.openbittorrent.com:80"),
 				Info: parsers.InfoDict{
 					Name:        "my_folder",            // Directory name
 					PieceLength: 16384,                  // 16 KB piece size
@@ -70,6 +73,11 @@ func TestParseMetaInfoErrors(t *testing.T) {
 			name:    "key `announce` missing",
 			torrent: []byte("d4:infod6:lengthi1024e4:name8:test.txt12:piece lengthi16384e6:pieces20:12345678901234567890eee"),
 			err:     parsers.ErrKeyNotFound,
+		},
+		{
+			name:    "key `announce` is an invalid URL",
+			torrent: []byte("d8:announce6:1http:4:infod6:lengthi1024e4:name8:test.txt12:piece lengthi16384e6:pieces20:12345678901234567890ee"),
+			err:     parsers.ErrMalformedMetaInfo,
 		},
 		{
 			name:    "key `announce` of incorrect type",
@@ -174,15 +182,23 @@ func TestParseMetaInfoErrors(t *testing.T) {
 		{
 			name:    "invalid bencode syntax",
 			torrent: []byte("invalid bencode"),
-			err:     parsers.ErrMalformedMetaInfo,
+			err:     bcd.ErrMalformedInput,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := parsers.ParseMetaInfo(bytes.NewReader(tt.torrent))
-			t.Log(err.Error())
 			helpers.AssertError(t, err, tt.err)
+			t.Log("[i]", err.Error())
 		})
 	}
+}
+
+func urlFromString(str string) url.URL {
+	result, err := url.Parse(str)
+	if err != nil {
+		panic(fmt.Sprintf("%q is not a valid URL", str))
+	}
+	return *result
 }
