@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"reflect"
 	"testing"
 
@@ -53,4 +54,12 @@ func AssertError(t testing.TB, err, want error) {
 	if !errors.Is(err, want) {
 		t.Errorf("expected %q, got %q", want, err.Error())
 	}
+}
+
+func UrlFromString(str string) url.URL {
+	result, err := url.Parse(str)
+	if err != nil {
+		panic(fmt.Sprintf("%q is not a valid URL", str))
+	}
+	return *result
 }

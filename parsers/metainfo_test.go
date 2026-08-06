@@ -3,8 +3,6 @@ package parsers_test
 import (
 	"bytes"
 	"crypto/sha1"
-	"fmt"
-	"net/url"
 	"testing"
 
 	bcd "github.com/nstefan13/bittorrent/bencoding"
@@ -22,7 +20,7 @@ func TestParseMetaInfo(t *testing.T) {
 			name:    "successfully parse a valid torrent in single file mode",
 			torrent: []byte("d8:announce35:udp://tracker.openbittorrent.com:804:infod6:lengthi1024e4:name8:test.txt12:piece lengthi16384e6:pieces20:12345678901234567890ee"),
 			want: &parsers.MetaInfo{
-				TrackerURL: urlFromString("udp://tracker.openbittorrent.com:80"),
+				TrackerURL: helpers.UrlFromString("udp://tracker.openbittorrent.com:80"),
 				Info: parsers.InfoDict{
 					Name:        "test.txt",
 					Length:      1024,                   // 1 KB file
@@ -35,7 +33,7 @@ func TestParseMetaInfo(t *testing.T) {
 			name:    "successfully parse a valid torrent in multiple file mode",
 			torrent: []byte("d8:announce35:udp://tracker.openbittorrent.com:804:infod5:filesld6:lengthi1024e4:pathl4:dir18:file.txteed6:lengthi2048e4:pathl4:dir29:image.pngeee4:name9:my_folder12:piece lengthi16384e6:pieces20:12345678901234567890ee"),
 			want: &parsers.MetaInfo{
-				TrackerURL: urlFromString("udp://tracker.openbittorrent.com:80"),
+				TrackerURL: helpers.UrlFromString("udp://tracker.openbittorrent.com:80"),
 				Info: parsers.InfoDict{
 					Name:        "my_folder",            // Directory name
 					PieceLength: 16384,                  // 16 KB piece size
@@ -218,12 +216,4 @@ func TestParseMetaInfoErrors(t *testing.T) {
 			t.Log("[i]", err.Error())
 		})
 	}
-}
-
-func urlFromString(str string) url.URL {
-	result, err := url.Parse(str)
-	if err != nil {
-		panic(fmt.Sprintf("%q is not a valid URL", str))
-	}
-	return *result
 }
