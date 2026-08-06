@@ -2,6 +2,7 @@ package parsers_test
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"fmt"
 	"net/url"
 	"testing"
@@ -61,6 +62,30 @@ func TestParseMetaInfo(t *testing.T) {
 			helpers.AssertEqual(t, tt.want, got)
 		})
 	}
+}
+
+func TestInfoHash(t *testing.T) {
+	t.Run("single file mode", func(t *testing.T) {
+		torrent := []byte("d8:announce35:udp://tracker.openbittorrent.com:804:infod6:lengthi1024e4:name8:test.txt12:piece lengthi16384e6:pieces20:12345678901234567890ee")
+		metaInfo, err := parsers.ParseMetaInfo(bytes.NewReader(torrent))
+		helpers.AssertNoError(t, err)
+
+		infoDictBytes := []byte("d6:lengthi1024e4:name8:test.txt12:piece lengthi16384e6:pieces20:12345678901234567890e")
+		expectedHash := sha1.Sum(infoDictBytes)
+
+		helpers.AssertEqual(t, string(expectedHash[:]), metaInfo.Info.InfoHash())
+	})
+
+	t.Run("multiple file mode", func(t *testing.T) {
+		torrent := []byte("d8:announce35:udp://tracker.openbittorrent.com:804:infod5:filesld6:lengthi1024e4:pathl4:dir18:file.txteed6:lengthi2048e4:pathl4:dir29:image.pngeee4:name9:my_folder12:piece lengthi16384e6:pieces20:12345678901234567890ee")
+		metaInfo, err := parsers.ParseMetaInfo(bytes.NewReader(torrent))
+		helpers.AssertNoError(t, err)
+
+		infoDictBytes := []byte("d5:filesld6:lengthi1024e4:pathl4:dir18:file.txteed6:lengthi2048e4:pathl4:dir29:image.pngeee4:name9:my_folder12:piece lengthi16384e6:pieces20:12345678901234567890e")
+		expectedHash := sha1.Sum(infoDictBytes)
+
+		helpers.AssertEqual(t, string(expectedHash[:]), metaInfo.Info.InfoHash())
+	})
 }
 
 func TestParseMetaInfoErrors(t *testing.T) {

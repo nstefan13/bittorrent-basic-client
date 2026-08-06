@@ -1,6 +1,7 @@
 package parsers
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -22,8 +23,6 @@ func (e *MalformedMetaInfoError) Error() string {
 	return fmt.Sprintf("%v: %v", ErrMalformedMetaInfo, e.Err)
 }
 
-// Unwrap returns both the sentinel error and the underlying error
-// so errors.Is(err, ErrMalformedMetaInfo) and errors.Is(err, e.Err) both return true.
 func (e *MalformedMetaInfoError) Unwrap() []error {
 	return []error{ErrMalformedMetaInfo, e.Err}
 }
@@ -90,6 +89,36 @@ type InfoDict struct {
 // IsMultiFile returns true if the torrent contains multiple files.
 func (i *InfoDict) IsMultiFile() bool {
 	return len(i.Files) > 0
+}
+
+func (i *InfoDict) InfoHash() string {
+	buffer := bytes.Buffer{}
+	encoder := bcd.NewEncoder(&buffer)
+	dict := bcd.BDict{
+		"name":         bcd.BString(i.Name),
+		"piece length": bcd.BInt(i.PieceLength),
+		"pieces":       bcd.BString(i.Pieces),
+	}
+
+	if !i.IsMultiFile() {
+		dict["length"] = bcd.BInt(i.Length)
+	} else {
+		files := make(bcd.BList, len(i.Files))
+		for index, file := range i.Files {
+			path := make(bcd.BList, len(file.Path))
+			for index2, sub := range file.Path {
+				path[index2] = bcd.BString(sub)
+			}
+			files[index] = bcd.BDict{
+				"length": bcd.BInt(file.Length),
+				"path":   path,
+			}
+		}
+		dict["files"] = files
+	}
+
+	encoder.EncodeDict(dict)
+	return buffer.String()
 }
 
 // ParseMetaInfo decodes a bencoded dictionary from the provided io.Reader stream
