@@ -1,7 +1,6 @@
 package bencoding
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -9,8 +8,6 @@ import (
 	"slices"
 	"strconv"
 )
-
-var ErrUnsupportedType = errors.New("type not supported for encoding")
 
 type Encoder struct {
 	writer io.Writer

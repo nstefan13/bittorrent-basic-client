@@ -6,24 +6,9 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-
-	"github.com/nstefan13/bittorrent/helpers"
 )
 
-var (
-	ErrInvalidStringLength = errors.New("invalid length for bencoded string")
-	ErrInvalidIntegerValue = errors.New("invalid value for bencoded integer")
-	ErrMalformedInput      = errors.New("malformed input")
-)
-
-type (
-	BInt    int
-	BString string
-	BList   []any
-	BDict   map[string]any
-)
-
-const StringMaxLength = 64 * 1024 * 1024
+const BStringMaxLength = 64 * 1024 * 1024
 
 type Decoder struct {
 	_trackedReader *TrackedReader // only Offset() should use it
@@ -53,7 +38,7 @@ func (d *Decoder) Offset() int {
 func (d *Decoder) DecodeString() (data BString, err error) {
 	startingOffset := d.Offset()
 	prefix, err := d.reader.ReadString(':')
-	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+	if err = treatEOFAsUnexpected(err); err != nil {
 		err = fmt.Errorf("parsing BString starting at offset %d: %w", startingOffset, err)
 		return
 	}
@@ -68,15 +53,15 @@ func (d *Decoder) DecodeString() (data BString, err error) {
 		err = fmt.Errorf("parsing BString starting at offset %d: %w: length cannot be negative", startingOffset, ErrInvalidStringLength)
 		return
 	}
-	if length > StringMaxLength {
-		err = fmt.Errorf("parsing BString starting at offset %d: %w: length larger than the allowed limit of %d bytes", startingOffset, ErrInvalidStringLength, StringMaxLength)
+	if length >= BStringMaxLength {
+		err = fmt.Errorf("parsing BString starting at offset %d: %w: length larger than the allowed limit of %d bytes", startingOffset, ErrInvalidStringLength, BStringMaxLength)
 		return
 	}
 
 	buffer := make([]byte, length)
 	_, err = io.ReadFull(d.reader, buffer)
 	data = BString(buffer)
-	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+	if err = treatEOFAsUnexpected(err); err != nil {
 		err = fmt.Errorf("parsing BString starting at offset %d: %w", startingOffset, err)
 		return
 	}
@@ -92,7 +77,7 @@ func (d *Decoder) DecodeString() (data BString, err error) {
 func (d *Decoder) DecodeInt() (value BInt, err error) {
 	startingOffset := d.Offset()
 	got, err := d.reader.ReadByte()
-	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+	if err = treatEOFAsUnexpected(err); err != nil {
 		err = fmt.Errorf("parsing BInt starting at offset %d: %w", startingOffset, err)
 		return
 	}
@@ -102,7 +87,7 @@ func (d *Decoder) DecodeInt() (value BInt, err error) {
 	}
 
 	data, err := d.reader.ReadString('e')
-	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+	if err = treatEOFAsUnexpected(err); err != nil {
 		err = fmt.Errorf("parsing BInt starting at offset %d: %w", startingOffset, err)
 		return
 	}
@@ -136,7 +121,7 @@ func (d *Decoder) DecodeList() (list BList, err error) {
 	startingOffset := d.Offset()
 	list = make([]any, 0)
 	got, err := d.reader.ReadByte()
-	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+	if err = treatEOFAsUnexpected(err); err != nil {
 		err = fmt.Errorf("parsing BList starting at offset %d: %w", startingOffset, err)
 		return
 	}
@@ -147,7 +132,7 @@ func (d *Decoder) DecodeList() (list BList, err error) {
 
 	for {
 		yes, err := areWeFinished(d.reader)
-		if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+		if err = treatEOFAsUnexpected(err); err != nil {
 			return nil, fmt.Errorf("parsing BList starting at offset %d (offset after error triggered: %d): %w", startingOffset, d.Offset(), err)
 		}
 		if yes {
@@ -180,7 +165,7 @@ func (d *Decoder) DecodeDict() (dict BDict, err error) {
 	dict = make(map[string]any)
 
 	got, err := d.reader.ReadByte()
-	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+	if err = treatEOFAsUnexpected(err); err != nil {
 		err = fmt.Errorf("parsing BDict starting at offset %d: %w", startingOffset, err)
 		return
 	}
@@ -191,7 +176,7 @@ func (d *Decoder) DecodeDict() (dict BDict, err error) {
 
 	for {
 		yes, err := areWeFinished(d.reader)
-		if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+		if err = treatEOFAsUnexpected(err); err != nil {
 			return nil, fmt.Errorf("parsing BDict starting at offset %d (offset after error triggered: %d): %w", startingOffset, d.Offset(), err)
 		}
 		if yes {
@@ -233,7 +218,7 @@ func (d *Decoder) DecodeDict() (dict BDict, err error) {
 // the return values (including any errors)
 func (d *Decoder) DecodeAny() (any, error) {
 	buffer, err := d.reader.Peek(1)
-	if err = helpers.TreatEOFAsUnexpected(err); err != nil {
+	if err = treatEOFAsUnexpected(err); err != nil {
 		return nil, err
 	}
 
@@ -270,4 +255,11 @@ func areWeFinished(reader *bufio.Reader) (bool, error) {
 
 func isDigit(b byte) bool {
 	return '0' <= b && b <= '9'
+}
+
+func treatEOFAsUnexpected(err error) error {
+	if errors.Is(err, io.EOF) {
+		return io.ErrUnexpectedEOF
+	}
+	return err
 }

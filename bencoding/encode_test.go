@@ -11,16 +11,6 @@ import (
 	"github.com/nstefan13/bittorrent/helpers"
 )
 
-type errWriter struct {
-	errGenerator func(*errWriter) error
-	calls        [][]byte
-}
-
-func (w *errWriter) Write(p []byte) (n int, err error) {
-	w.calls = append(w.calls, p)
-	return len(p), w.errGenerator(w)
-}
-
 func TestEncodeString(t *testing.T) {
 	testCases := []struct {
 		Name   string
@@ -294,4 +284,14 @@ func TestEncodeAnyErrors(t *testing.T) {
 		err := bcd.NewEncoder(&bytes.Buffer{}).EncodeAny(input)
 		helpers.AssertError(t, err, bcd.ErrUnsupportedType)
 	})
+}
+
+type errWriter struct {
+	errGenerator func(*errWriter) error
+	calls        [][]byte
+}
+
+func (w *errWriter) Write(p []byte) (n int, err error) {
+	w.calls = append(w.calls, p)
+	return len(p), w.errGenerator(w)
 }

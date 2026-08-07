@@ -1,44 +1,14 @@
-package parsers
+package serde
 
 import (
 	"bytes"
 	"crypto/sha1"
-	"errors"
 	"fmt"
 	"io"
 	"net/url"
-	"reflect"
 
 	bcd "github.com/nstefan13/bittorrent/bencoding"
 )
-
-var ErrMalformedMetaInfo = errors.New("torrent is corrupt")
-var ErrKeyNotFound = errors.New("key does not exists")
-var ErrTypeMismatch = errors.New("value has incorrect type")
-
-type MalformedMetaInfoError struct {
-	Err error
-}
-
-func (e *MalformedMetaInfoError) Error() string {
-	return fmt.Sprintf("%v: %v", ErrMalformedMetaInfo, e.Err)
-}
-
-func (e *MalformedMetaInfoError) Unwrap() []error {
-	return []error{ErrMalformedMetaInfo, e.Err}
-}
-
-type KeyNotFoundError struct {
-	Key string
-}
-
-func (e *KeyNotFoundError) Error() string {
-	return fmt.Sprintf("key %q not found", e.Key)
-}
-
-func (e *KeyNotFoundError) Unwrap() error {
-	return ErrKeyNotFound
-}
 
 type File struct {
 	// length
@@ -92,7 +62,7 @@ func (i *InfoDict) IsMultiFile() bool {
 	return len(i.Files) > 0
 }
 
-func (i *InfoDict) InfoHash() string {
+func (i *InfoDict) InfoHash() [20]byte {
 	buffer := bytes.Buffer{}
 	encoder := bcd.NewEncoder(&buffer)
 	dict := bcd.BDict{
@@ -120,10 +90,10 @@ func (i *InfoDict) InfoHash() string {
 
 	encoder.EncodeDict(dict)
 	hash := sha1.Sum(buffer.Bytes())
-	return string(hash[:])
+	return hash
 }
 
-// ParseMetaInfo decodes a bencoded dictionary from the provided io.Reader stream
+// SerializeMetaInfo decodes a bencoded dictionary from the provided io.Reader stream
 // and maps its fields into a strongly-typed MetaInfo struct.
 //
 // Error Handling:
@@ -142,7 +112,7 @@ func (i *InfoDict) InfoHash() string {
 //
 // Returned errors wrap sentinel errors such as ErrMalformedMetaInfo, ErrKeyNotFound, or
 // ErrTypeMismatch, allowing callers to inspect specific failure conditions using errors.Is.
-func ParseMetaInfo(reader io.Reader) (metaInfo *MetaInfo, err error) {
+func SerializeMetaInfo(reader io.Reader) (metaInfo *MetaInfo, err error) {
 	metaInfo = &MetaInfo{}
 	decoder := bcd.NewDecoder(reader)
 	dict, err := decoder.DecodeDict()
@@ -151,7 +121,7 @@ func ParseMetaInfo(reader io.Reader) (metaInfo *MetaInfo, err error) {
 		return
 	}
 
-	announce, err := extractValue[bcd.BString](dict, "announce")
+	announce, err := ExtractValueFromBDict[bcd.BString](dict, "announce")
 	if err != nil {
 		err = &MalformedMetaInfoError{err}
 		return
@@ -163,27 +133,27 @@ func ParseMetaInfo(reader io.Reader) (metaInfo *MetaInfo, err error) {
 	}
 	metaInfo.TrackerURL = *announceAsURL
 
-	info, err := extractValue[bcd.BDict](dict, "info")
+	info, err := ExtractValueFromBDict[bcd.BDict](dict, "info")
 	if err != nil {
 		err = &MalformedMetaInfoError{err}
 		return
 	}
 
-	name, err := extractValue[bcd.BString](info, "name")
+	name, err := ExtractValueFromBDict[bcd.BString](info, "name")
 	if err != nil {
 		err = &MalformedMetaInfoError{err}
 		return
 	}
 	metaInfo.Info.Name = string(name)
 
-	pieceLength, err := extractValue[bcd.BInt](info, "piece length")
+	pieceLength, err := ExtractValueFromBDict[bcd.BInt](info, "piece length")
 	if err != nil {
 		err = &MalformedMetaInfoError{err}
 		return
 	}
 	metaInfo.Info.PieceLength = int(pieceLength)
 
-	pieces, err := extractValue[bcd.BString](info, "pieces")
+	pieces, err := ExtractValueFromBDict[bcd.BString](info, "pieces")
 	if err != nil {
 		err = &MalformedMetaInfoError{err}
 		return
@@ -205,7 +175,7 @@ func ParseMetaInfo(reader io.Reader) (metaInfo *MetaInfo, err error) {
 	}
 
 	if lengthExists {
-		length, err := extractValue[bcd.BInt](info, "length")
+		length, err := ExtractValueFromBDict[bcd.BInt](info, "length")
 		if err != nil {
 			return nil, &MalformedMetaInfoError{err}
 		}
@@ -213,7 +183,7 @@ func ParseMetaInfo(reader io.Reader) (metaInfo *MetaInfo, err error) {
 	}
 
 	if filesExists {
-		files, err2 := extractValue[bcd.BList](info, "files")
+		files, err2 := ExtractValueFromBDict[bcd.BList](info, "files")
 		if err2 != nil {
 			return nil, &MalformedMetaInfoError{err2}
 		}
@@ -225,13 +195,13 @@ func ParseMetaInfo(reader io.Reader) (metaInfo *MetaInfo, err error) {
 				return nil, fmt.Errorf("%w: the %d-th entry in `metainfo.files` is not a dictionary", ErrMalformedMetaInfo, index)
 			}
 
-			length, err2 := extractValue[bcd.BInt](file, "length")
+			length, err2 := ExtractValueFromBDict[bcd.BInt](file, "length")
 			if err2 != nil {
 				return nil, fmt.Errorf("%w: for the %d-th entry in `metainfo.files`: %w", ErrMalformedMetaInfo, index, err2)
 			}
 			metaInfo.Info.Files[index].Length = int(length)
 
-			path, err2 := extractValue[bcd.BList](file, "path")
+			path, err2 := ExtractValueFromBDict[bcd.BList](file, "path")
 			if err2 != nil {
 				return nil, fmt.Errorf("%w: for the %d-th entry in `metainfo.files`: %w", ErrMalformedMetaInfo, index, err2)
 			}
@@ -249,31 +219,6 @@ func ParseMetaInfo(reader io.Reader) (metaInfo *MetaInfo, err error) {
 				metaInfo.Info.Files[index].Path[index2] = string(subdirectory)
 			}
 		}
-	}
-
-	return
-}
-
-// extractValue retrieves the value associated with key from the bencode dictionary dict
-// and safely asserts its type to ValueType (such as bcd.BString, bcd.BInt, bcd.BDict, or bcd.BList).
-//
-// It is used throughout ParseMetaInfo to eliminate repetitive key lookup and type assertion boilerplate.
-//
-// Returns:
-//   - KeyNotFoundError (unwrapping to ErrKeyNotFound) if key is missing from dict.
-//   - An error wrapping ErrTypeMismatch if key exists but holds a value of a different bencode type,
-//     then the one specified in `ValueType`
-func extractValue[ValueType any](dict bcd.BDict, key string) (value ValueType, err error) {
-	untypedValue, alreadyThere := dict[key]
-	if !alreadyThere {
-		err = &KeyNotFoundError{key}
-		return
-	}
-
-	value, ok := dict[key].(ValueType)
-	if !ok {
-		err = fmt.Errorf("%w: value corresponding to key %q should be of type %q, not %q", ErrTypeMismatch, key, reflect.TypeFor[ValueType]().Name(), reflect.TypeOf(untypedValue).Name())
-		return
 	}
 
 	return

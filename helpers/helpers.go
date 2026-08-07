@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	"crypto/sha1"
 	"errors"
 	"fmt"
 	"io"
@@ -62,4 +63,12 @@ func UrlFromString(str string) url.URL {
 		panic(fmt.Sprintf("%q is not a valid URL", str))
 	}
 	return *result
+}
+
+func SHA1String(strings ...string) [20]byte {
+	var buffer []byte
+	for _, str := range strings {
+		buffer = append(buffer, []byte(str)...)
+	}
+	return sha1.Sum(buffer)
 }
