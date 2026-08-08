@@ -9,16 +9,19 @@ import (
 	"strconv"
 )
 
+// Encoder serializes bencoding types (BInt, BString, BList, BDict) into an [io.Writer].
 type Encoder struct {
 	writer io.Writer
 }
 
+// NewEncoder creates a new bencoding [Encoder] writing to the provided writer.
 func NewEncoder(writer io.Writer) *Encoder {
 	return &Encoder{
 		writer: writer,
 	}
 }
 
+// EncodeString encodes a [BString] into bencoded format ("<length>:<content>").
 func (e *Encoder) EncodeString(str BString) error {
 	length := []byte(strconv.Itoa(len(str)))
 	content := []byte(str)
@@ -32,6 +35,7 @@ func (e *Encoder) EncodeString(str BString) error {
 	return err
 }
 
+// EncodeInt encodes a [BInt] into bencoded format ("i<integer>e").
 func (e *Encoder) EncodeInt(num BInt) error {
 	value := []byte(strconv.Itoa(int(num)))
 
@@ -44,6 +48,8 @@ func (e *Encoder) EncodeInt(num BInt) error {
 	return err
 }
 
+// EncodeList encodes a [BList] into bencoded format ("l<elements>e").
+// Elements are encoded sequentially using [Encoder.EncodeAny].
 func (e *Encoder) EncodeList(list BList) error {
 	_, err := e.writer.Write([]byte("l"))
 	if err != nil {
@@ -65,6 +71,9 @@ func (e *Encoder) EncodeList(list BList) error {
 	return nil
 }
 
+// EncodeDict encodes a [BDict] into bencoded format ("d<key><val>...e").
+//
+// Per the BEP3 specification, dictionary keys must be sorted in lexicographical order (byte-by-byte comparison).
 func (e *Encoder) EncodeDict(dict BDict) error {
 	_, err := e.writer.Write([]byte("d"))
 	if err != nil {
@@ -95,15 +104,14 @@ func (e *Encoder) EncodeDict(dict BDict) error {
 	return nil
 }
 
-// Encodes a given value by type asserting
-// it against BInt, BString, BList and BDict
-// and calling the appropriate encoding function.
-// Since it uses type assertions, EncodeAny won't
-// work on native types like `int` unless they
-// are converted to one of the B* types. For example:
+// EncodeAny encodes a value by asserting its type against [BInt], [BString], [BList], and [BDict]
+// and delegating to the appropriate Encode* method.
 //
-//	EncodeAny(52) will return a ErrUnsupportedType, while
-//	EncodeAny(BInt(52)) will succeed
+// Values must be typed as one of the explicit B* types. As such, passing primitive Go types (e.g. `int` instead of [BInt])
+// will return [ErrUnsupportedType]. For example:
+//
+//	EncodeAny(52) returns a ErrUnsupportedType, while
+//	EncodeAny(BInt(52)) succeeds
 func (e *Encoder) EncodeAny(value any) error {
 	if value, ok := value.(BInt); ok {
 		return e.EncodeInt(value)

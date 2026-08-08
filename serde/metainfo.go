@@ -62,6 +62,8 @@ func (i *InfoDict) IsMultiFile() bool {
 	return len(i.Files) > 0
 }
 
+// InfoHash reconstructs the canonical bencoded info dictionary and calculates its 20-byte SHA-1 hash,
+// which uniquely identifies the torrent on the BitTorrent network.
 func (i *InfoDict) InfoHash() [20]byte {
 	buffer := bytes.Buffer{}
 	encoder := bcd.NewEncoder(&buffer)

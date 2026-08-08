@@ -8,6 +8,8 @@ import (
 	bcd "github.com/nstefan13/bittorrent/bencoding"
 )
 
+// Decode decodes a bencoded byte stream into the specified target type T (such as [bcd.BString], [bcd.BInt], [bcd.BList], or [bcd.BDict]).
+// Returns [ErrTypeMismatch] if the decoded value cannot be asserted to T.
 func Decode[T any](stream []byte) (T, error) {
 	var zero T
 	decoder := bcd.NewDecoder(bytes.NewReader(stream))
@@ -25,11 +27,13 @@ func Decode[T any](stream []byte) (T, error) {
 	return typedValue, nil
 }
 
+// Encode serializes a bencoding value (such as [bcd.BString], [bcd.BInt], [bcd.BList], or [bcd.BDict]) into a bencoded byte slice.
 func Encode(data any) ([]byte, error) {
 	buffer := &bytes.Buffer{}
 	err := bcd.NewEncoder(buffer).EncodeAny(data)
 	return buffer.Bytes(), err
 }
+
 
 // ExtractValueFromBDict retrieves the value associated with key from the bencode dictionary dict
 // and safely asserts its type to ValueType (such as BString, BInt, BDict, or BList).

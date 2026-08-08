@@ -8,13 +8,18 @@ import (
 	"strconv"
 )
 
+// BStringMaxLength is the maximum allowed byte length for a bencoded string (64 MB).
+// This hard limit prevents attackers from triggering massive memory allocations with crafted length prefixes.
 const BStringMaxLength = 64 * 1024 * 1024
 
+// Decoder parses bencoded data streams into intermediate bencoding representations
+// (BInt, BString, BList, BDict).
 type Decoder struct {
 	_trackedReader *TrackedReader // only Offset() should use it
 	reader         *bufio.Reader
 }
 
+// NewDecoder creates a new bencoding [Decoder] reading from the supplied reader.
 func NewDecoder(reader io.Reader) (decoder *Decoder) {
 	decoder = &Decoder{}
 	decoder._trackedReader = &TrackedReader{reader: reader}
@@ -22,19 +27,21 @@ func NewDecoder(reader io.Reader) (decoder *Decoder) {
 	return decoder
 }
 
+// Offset returns the current 0-indexed byte offset in the underlying stream.
+// Useful for creating detailed, actionable parsing error messages.
 func (d *Decoder) Offset() int {
 	return d._trackedReader.offset - d.reader.Buffered()
 }
 
-// Decode a bencoded string and returns it as an array of bytes.
-// The function expects the string to be at the beginning of the stream
-// and respect the BEP3 specifications. Any io.EOF erros encountered during
-// parsing are treated as an io.UnexpectedEOF.
-// If the length is invalid it returns Atoi-specific
-// errors (like strconv.ErrSyntax or strconv.ErrRange) wrapped alongside
-// ErrInvalidStringLength.
-// To prevent attackers from allocating huge chunks of memory for strings,
-// the functions caps the length at 64MB (arbitrary number, not configurable)
+// DecodeString decodes a bencoded byte string ("<length>:<contents>").
+//
+// The length prefix must be a non-negative base-10 integer followed by a colon.
+// To prevent denial-of-service attacks via unbounded memory allocation, string lengths
+// are capped at [BStringMaxLength] (64 MB).
+//
+// Error conditions:
+//   - Returns [ErrInvalidStringLength] if the length prefix is missing, non-numeric, negative, or exceeds [BStringMaxLength].
+//   - Returns [io.ErrUnexpectedEOF] if the stream ends prematurely before reading the full string.
 func (d *Decoder) DecodeString() (data BString, err error) {
 	startingOffset := d.Offset()
 	prefix, err := d.reader.ReadString(':')
@@ -69,11 +76,17 @@ func (d *Decoder) DecodeString() (data BString, err error) {
 	return
 }
 
-// Parses an integer in the bencoding format. If the sequence
-// doesn't start with an `i` the stream is considered malformed
-// and an ErrMalformedInput is returned. If the value of the
-// integered is invalid ErrInvalidIntegerValue will be returned,
-// optionally alongside some Atoi-specific errors
+// DecodeInt decodes a bencoded integer ("i<integer>e") into a [BInt].
+//
+// Per the BEP3 specification:
+//   - Integers must be prefixed with 'i' and terminated with 'e'.
+//   - Leading zeros are not allowed (e.g. "i03e" is invalid), except for "i0e".
+//   - Negative zero ("i-0e") is invalid.
+//
+// Error conditions:
+//   - Returns [ErrMalformedInput] if the stream does not begin with 'i'.
+//   - Returns [ErrInvalidIntegerValue] if the value is empty, non-numeric, contains invalid signs or leading zeros.
+//   - Returns [io.ErrUnexpectedEOF] if the stream ends prematurely before reading the terminating 'e'.
 func (d *Decoder) DecodeInt() (value BInt, err error) {
 	startingOffset := d.Offset()
 	got, err := d.reader.ReadByte()
@@ -113,10 +126,14 @@ func (d *Decoder) DecodeInt() (value BInt, err error) {
 	return
 }
 
-// Parses a list in the bencoding format. If the sequence
-// doesn't start with an `l` the stream is considered malformed
-// and an ErrMalformedInput is returned. Any errors encountered
-// while parsing the elements of the list are returned to the caller
+// DecodeList decodes a bencoded list of elements ("l<elements>e") into a [BList].
+//
+// Elements are parsed recursively using [Decoder.DecodeAny].
+//
+// Error conditions:
+//   - Returns [ErrMalformedInput] if the list does not start with 'l'.
+//   - Returns any error encountered while parsing elements within the list.
+//   - Returns [io.ErrUnexpectedEOF] if the stream terminates before finding the closing 'e'.
 func (d *Decoder) DecodeList() (list BList, err error) {
 	startingOffset := d.Offset()
 	list = make([]any, 0)
@@ -155,11 +172,15 @@ func (d *Decoder) DecodeList() (list BList, err error) {
 	return
 }
 
-// Parses a dictionary in the bencoding format. If the sequence
-// doesn't start with an `d` the stream is considered malformed
-// and an ErrMalformedInput is returned. Any errors encountered
-// while parsing the values and keys of the dictionary are returned
-// to the caller
+// DecodeDict decodes a bencoded dictionary ("d<key><val>...e") into a [BDict].
+//
+// In BEP3, all dictionary keys must be bencoded strings. Values are decoded recursively
+// via [Decoder.DecodeAny].
+//
+// Error conditions:
+//   - Returns [ErrMalformedInput] if the dictionary does not begin with 'd'.
+//   - Returns parsing errors encountered while decoding keys or values.
+//   - Returns [io.ErrUnexpectedEOF] if the stream ends before reading the terminating 'e'.
 func (d *Decoder) DecodeDict() (dict BDict, err error) {
 	startingOffset := d.Offset()
 	dict = make(map[string]any)
@@ -202,20 +223,16 @@ func (d *Decoder) DecodeDict() (dict BDict, err error) {
 	return
 }
 
-// Attempts to decode the beggining of the stream into one of
-// the 4 types provided by the bencoding specifications. The
-// underlying object it returns is:
-//   - of type `BInt` if it decoded an bencoded integer
-//   - of type `BString` if it decoded an bencoded string
-//   - of type `BList` if it decoded an bencoded list
-//   - of type `BDict` if it decoded an bencoded dictionary
+// DecodeAny peeks at the next byte in the stream and decodes the appropriate bencoded type:
+//   - 'i' -> [BInt] via [Decoder.DecodeInt]
+//   - 'l' -> [BList] via [Decoder.DecodeList]
+//   - 'd' -> [BDict] via [Decoder.DecodeDict]
+//   - '0'-'9' -> [BString] via [Decoder.DecodeString]
 //
-// This function acts as a router for the other Decode* functions.
-// It peeks at the first byte and uses it to guess what data
-// might be encoded there. If it cannot deduce the type of data, it
-// returns an ErrMalformedInput. If it successfully deduces the type
-// of data, it calls the corresponding Decode* function and forwards
-// the return values (including any errors)
+// Error conditions:
+//   - Returns [ErrMalformedInput] if the discriminator byte does not match any valid bencoding type.
+//   - Returns any parsing error returned by the dispatched Decode* function.
+//   - Returns [io.ErrUnexpectedEOF] if the stream is empty or truncated.
 func (d *Decoder) DecodeAny() (any, error) {
 	buffer, err := d.reader.Peek(1)
 	if err = treatEOFAsUnexpected(err); err != nil {

@@ -12,8 +12,7 @@ import (
 	"github.com/alecthomas/assert/v2"
 )
 
-// A small adapter function that returns io.ErrUnexpectedEOF
-// if err contains io.EOF
+// TreatEOFAsUnexpected translates [io.EOF] errors into [io.ErrUnexpectedEOF] to signal premature stream termination.
 func TreatEOFAsUnexpected(err error) error {
 	if errors.Is(err, io.EOF) {
 		return io.ErrUnexpectedEOF
@@ -21,6 +20,7 @@ func TreatEOFAsUnexpected(err error) error {
 	return err
 }
 
+// AssertEqual asserts that expected and got are equal, performing quote normalization when comparing strings.
 func AssertEqual(t testing.TB, expected, got any) {
 	t.Helper()
 
@@ -35,6 +35,7 @@ func AssertEqual(t testing.TB, expected, got any) {
 	}
 }
 
+// AssertNoError fails the test if err is not nil.
 func AssertNoError(t testing.TB, err error) {
 	t.Helper()
 	if err != nil {
@@ -42,6 +43,7 @@ func AssertNoError(t testing.TB, err error) {
 	}
 }
 
+// AssertError fails the test if err is nil or does not match want via [errors.Is].
 func AssertError(t testing.TB, err, want error) {
 	t.Helper()
 	if want == nil {
@@ -57,6 +59,7 @@ func AssertError(t testing.TB, err, want error) {
 	}
 }
 
+// UrlFromString parses a raw URL string into a [url.URL], panicking if invalid.
 func UrlFromString(str string) url.URL {
 	result, err := url.Parse(str)
 	if err != nil {
@@ -65,6 +68,7 @@ func UrlFromString(str string) url.URL {
 	return *result
 }
 
+// SHA1String computes the 20-byte SHA-1 hash of the concatenated input strings.
 func SHA1String(strings ...string) [20]byte {
 	var buffer []byte
 	for _, str := range strings {
@@ -72,3 +76,4 @@ func SHA1String(strings ...string) [20]byte {
 	}
 	return sha1.Sum(buffer)
 }
+

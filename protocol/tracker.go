@@ -7,13 +7,16 @@ import (
 	"github.com/nstefan13/bittorrent/serde"
 )
 
+// ErrUnsupportedTracker is returned when a metainfo announce URL uses an unsupported scheme (e.g. "udp").
 var ErrUnsupportedTracker = errors.New("unsupported tracker")
 
+// PeerAddress represents the network address (IP and port) of a BitTorrent peer in the swarm.
 type PeerAddress struct {
 	Ip   net.IP
 	Port uint16
 }
 
+// NewPeerAddress constructs a [PeerAddress] by parsing the provided string IP into [net.IP].
 func NewPeerAddress(ip string, port uint16) PeerAddress {
 	return PeerAddress{
 		Ip:   net.ParseIP(ip),
