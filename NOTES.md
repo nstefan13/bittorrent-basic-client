@@ -67,3 +67,44 @@ During implementations, some tradeoffs were made:
 After I've implemented the bencoding decoder (and encoder) I started working on the parser for MetaInfo. I chose to simply parse the stream into a BDict and then map all the entries in there to an actual struct. That was tedious since you have to do typechecks at every step of the way and the code quickly becomes convoluted. I could've implemented a custom mapper that takes as input a `any` and a pointer to a struct and using the magic of reflection it populates it, but this is so error prone and so out of scope for this project that I dediced I better stick with the manual typechecking.
 
 After some research I found `go-vip/mapstructure`, which seems to do what I need: map `any` to a concrete struct. If the need later arises, I will for sure use it, but at the moment the code I wrote is quite robust and ready-to-use, so I am not going to refactor it.
+
+## Tracker Response Parsing
+
+- HTTPTracker.RequestPeers() ignores the PeerID
+  Reasoning:
+  1. There is absolutely no need for that value whatsoever
+
+## Errors
+
+The current error hierarchy (as Gemini understood it because I was too tired to write it off):
+
+```ascii
++-------------------------------------------------------------------------+
+| Layer 3: Protocol Domain (protocol package)                             |
+| High-level client domain errors:                                        |
+|   - ErrUnsupportedTracker                                               |
+|   - ErrTrackerReportedFailure (wraps tracker's failure message)         |
+|   - ErrMalformedTrackerResponse (wraps underlying parser/format errors) |
+|   - Network / IO errors (e.g., connection refused, read timeout)        |
++------------------------------------+------------------------------------+
+                                     |
+                                     v
++------------------------------------+------------------------------------+
+| Layer 2: Semantic Serialization (serde package)                         |
+| BitTorrent metadata mapping & schema validation:                        |
+|   - ErrMalformedMetaInfo & MalformedMetaInfoError                       |
+|   - ErrKeyNotFound & KeyNotFoundError                                   |
+|   - ErrTypeMismatch                                                     |
++------------------------------------+------------------------------------+
+                                     |
+                                     v
++------------------------------------+------------------------------------+
+| Layer 1: Primitive Bencoding (bencoding package)                        |
+| Low-level byte-stream parser errors:                                    |
+|   - ErrMalformedInput                                                   |
+|   - ErrInvalidStringLength                                              |
+|   - ErrInvalidIntegerValue                                              |
+|   - ErrUnsupportedType                                                  |
+|   - io.ErrUnexpectedEOF                                                 |
++-------------------------------------------------------------------------+
+```
