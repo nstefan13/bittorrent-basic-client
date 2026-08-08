@@ -21,9 +21,11 @@ func NewPeerAddress(ip string, port uint16) PeerAddress {
 	}
 }
 
+// Tracker defines the capability to announce to a tracker and discover peers in the swarm.
 type Tracker interface {
-	RequestPeers() []PeerAddress
+	RequestPeers() ([]PeerAddress, error)
 }
+
 
 // NewTrackerFromMetaInfo constructs a Tracker suitable for communicating with
 // the tracker specified in the metainfo's announce URL.
