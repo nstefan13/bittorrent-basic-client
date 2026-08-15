@@ -1,0 +1,97 @@
+package datastructures_test
+
+import (
+	"fmt"
+	"slices"
+	"testing"
+
+	ds "github.com/nstefan13/bittorrent/datastructures"
+)
+
+func TestNewBitfield(t *testing.T) {
+	testCases := []struct {
+		name  string
+		input []int
+		want  []byte
+	}{
+		{
+			name:  "initialize bitfield from list of 10 integers",
+			input: []int{0, 1, 1, 0, 1, 1, 1, 0, 0, 1},
+			want:  []byte{0b01101110, 0b01000000},
+		},
+		{
+			name:  "initialize bitfield from list of 9 integers",
+			input: []int{0, 1, 1, 0, 1, 1, 1, 0, 1},
+			want:  []byte{0b01101110, 0b10000000},
+		},
+		{
+			name:  "initialize bitfield from list of 5 integers",
+			input: []int{0, 1, 1, 0, 1},
+			want:  []byte{0b01101000},
+		},
+		{
+			name:  "initialize bitfield from list of 1 integer",
+			input: []int{1},
+			want:  []byte{0b10000000},
+		},
+		{
+			name:  "any value different from 1 becomes a 0-bit",
+			input: []int{1, -1, 2, 1},
+			want:  []byte{0b10010000},
+		},
+		{
+			name:  "an uninitialized is just one byte with all eight bits set to 0",
+			input: nil,
+			want:  []byte{0b00000000},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ds.NewBitfield(tc.input...).ToBytes()
+			assertBytes(t, tc.want, got)
+		})
+	}
+
+	t.Run("dynamically grow bitfield and set/clear individual bits", func(t *testing.T) {
+		bf := ds.NewBitfield()
+		assertBytes(t, []byte{0b00000000}, bf.ToBytes())
+
+		bf.SetBit(0, true)
+		assertBytes(t, []byte{0b10000000}, bf.ToBytes())
+
+		bf.SetBit(1, true)
+		assertBytes(t, []byte{0b11000000}, bf.ToBytes())
+
+		bf.SetBit(1, false)
+		assertBytes(t, []byte{0b10000000}, bf.ToBytes())
+
+		bf.SetBit(12, false)
+		assertBytes(t, []byte{0b10000000, 0b00000000}, bf.ToBytes())
+
+		bf.SetBit(11, true)
+		assertBytes(t, []byte{0b10000000, 0b00010000}, bf.ToBytes())
+
+		bf.SetBit(8, true)
+		assertBytes(t, []byte{0b10000000, 0b10010000}, bf.ToBytes())
+	})
+
+}
+
+func assertBytes(t testing.TB, want, got []byte) {
+	t.Helper()
+
+	if !slices.Equal(got, want) {
+		gotDisplay := make([]string, len(got))
+		wantDisplay := make([]string, len(want))
+
+		for i := range len(got) {
+			gotDisplay[i] = fmt.Sprintf("%08b", got[i])
+		}
+		for i := range len(want) {
+			wantDisplay[i] = fmt.Sprintf("%08b", want[i])
+		}
+
+		t.Errorf("expected %v, got %v", wantDisplay, gotDisplay)
+	}
+}
