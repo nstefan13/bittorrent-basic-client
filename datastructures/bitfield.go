@@ -11,11 +11,21 @@ type Bitfield struct {
 	data []byte
 }
 
-// NewBitfield initializes a new [Bitfield] from a sequence of integers.
+// NewBitfield initializes a new [Bitfield] wrapping the provided byte slice.
+// If the slice is empty or nil, it initializes a [Bitfield] with a single zero byte.
+func NewBitfield(bytes []byte) *Bitfield {
+	if len(bytes) == 0 {
+		bytes = []byte{0}
+	}
+
+	return &Bitfield{bytes}
+}
+
+// NewBitfieldFromBits initializes a new [Bitfield] from a sequence of integers.
 // A value of 1 sets the corresponding bit to 1, while any other value sets it to 0.
 // Bits are packed high-bit first (MSB to LSB) within each byte.
 // When called with no arguments, it initializes a [Bitfield] with a single zero byte.
-func NewBitfield(bits ...int) *Bitfield {
+func NewBitfieldFromBits(bits ...int) *Bitfield {
 	if len(bits) == 0 {
 		return &Bitfield{data: []byte{0}}
 	}
@@ -33,14 +43,6 @@ func NewBitfield(bits ...int) *Bitfield {
 	return &Bitfield{data}
 }
 
-func NewBitfieldFromBytes(bytes []byte) *Bitfield {
-	if len(bytes) == 0 {
-		bytes = []byte{0}
-	}
-
-	return &Bitfield{bytes}
-}
-
 // SetBit sets (if value is true) or clears (if value is false) the bit at the specified index.
 // If index requires more bytes than currently allocated, the underlying byte slice
 // is dynamically expanded to accommodate it.
@@ -48,7 +50,7 @@ func NewBitfieldFromBytes(bytes []byte) *Bitfield {
 //
 // Example:
 //
-//	bf := NewBitfield() // [00000000]
+//	bf := NewBitfield(nil) // [00000000]
 //	bf.SetBit(0, true)  // [10000000]
 //	bf.SetBit(2, true)  // [10100000]
 //	bf.SetBit(2, false) // [10000000]

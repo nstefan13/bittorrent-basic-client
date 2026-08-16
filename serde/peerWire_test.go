@@ -367,7 +367,7 @@ func TestSerialize(t *testing.T) {
 }
 
 func BitfieldPacketFromString(description string) serde.BitfieldPacket {
-	bf := ds.NewBitfield()
+	bf := ds.NewBitfield(nil)
 
 	for index, r := range description {
 		if r == '1' {

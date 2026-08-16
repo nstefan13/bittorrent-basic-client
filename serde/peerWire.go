@@ -115,7 +115,7 @@ func DeserializePacket(reader io.Reader) (packet any, err error) {
 			return nil, err
 		}
 
-		return BitfieldPacket{*ds.NewBitfieldFromBytes(payload)}, nil
+		return BitfieldPacket{*ds.NewBitfield(payload)}, nil
 
 	// REQUEST PACKET
 	case 6:

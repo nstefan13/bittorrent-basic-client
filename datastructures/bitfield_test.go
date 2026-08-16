@@ -10,6 +10,25 @@ import (
 )
 
 func TestNewBitfield(t *testing.T) {
+	t.Run("wraps bytes in a Bitfield", func(t *testing.T) {
+		buffer := []byte{0b00010101, 0b01010010}
+		bf := ds.NewBitfield(buffer)
+
+		want := "0001010101010010"
+		got := bf.String()
+		helpers.AssertEqual(t, want, got)
+	})
+
+	t.Run("nil or empty byte slice is initialized with a single zero byte", func(t *testing.T) {
+		bfNil := ds.NewBitfield(nil)
+		assertBytes(t, []byte{0b00000000}, bfNil.ToBytes())
+
+		bfEmpty := ds.NewBitfield([]byte{})
+		assertBytes(t, []byte{0b00000000}, bfEmpty.ToBytes())
+	})
+}
+
+func TestNewBitfieldFromBits(t *testing.T) {
 	testCases := []struct {
 		name  string
 		input []int
@@ -49,13 +68,13 @@ func TestNewBitfield(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := ds.NewBitfield(tc.input...).ToBytes()
+			got := ds.NewBitfieldFromBits(tc.input...).ToBytes()
 			assertBytes(t, tc.want, got)
 		})
 	}
 
 	t.Run("dynamically grow bitfield and set/clear individual bits", func(t *testing.T) {
-		bf := ds.NewBitfield()
+		bf := ds.NewBitfield(nil)
 		assertBytes(t, []byte{0b00000000}, bf.ToBytes())
 
 		bf.SetBit(0, true)
@@ -78,18 +97,9 @@ func TestNewBitfield(t *testing.T) {
 	})
 
 	t.Run("String() returns a human readable representation", func(t *testing.T) {
-		input := ds.NewBitfield(0, 1, 1, 0, 1, 0, 1, 1, 1)
+		input := ds.NewBitfieldFromBits(0, 1, 1, 0, 1, 0, 1, 1, 1)
 		got := input.String()
 		want := "0110101110000000"
-		helpers.AssertEqual(t, want, got)
-	})
-
-	t.Run("NewBitfieldFromBytes wraps those bytes in a Bitfield", func(t *testing.T) {
-		buffer := []byte{0b00010101, 0b01010010}
-		bf := ds.NewBitfieldFromBytes(buffer)
-
-		want := "0001010101010010"
-		got := bf.String()
 		helpers.AssertEqual(t, want, got)
 	})
 }
