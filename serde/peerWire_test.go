@@ -42,7 +42,7 @@ func TestDeserializePacket(t *testing.T) {
 		{
 			name:           "stream cut off while reading type-id",
 			input:          []byte{0x00, 0x00, 0x00, 0x01},
-			want:           newBitfieldPacket(""),
+			want:           BitfieldPacketFromString(""),
 			expectedErrors: []error{io.ErrUnexpectedEOF},
 		},
 
@@ -110,31 +110,31 @@ func TestDeserializePacket(t *testing.T) {
 		{
 			name:           "7 bits bitfield",
 			input:          []byte{0x00, 0x00, 0x00, 0x02, 5, 0b00100110},
-			want:           newBitfieldPacket("0010011"),
+			want:           BitfieldPacketFromString("0010011"),
 			expectedErrors: nil,
 		},
 		{
 			name:           "9 bits bitfield",
 			input:          []byte{0x00, 0x00, 0x00, 0x03, 5, 0b10010110, 0b10000000},
-			want:           newBitfieldPacket("100101101"),
+			want:           BitfieldPacketFromString("100101101"),
 			expectedErrors: nil,
 		},
 		{
 			name:           "15 bits bitfield",
 			input:          []byte{0x00, 0x00, 0x00, 0x03, 5, 0b10010110, 0b10011010},
-			want:           newBitfieldPacket("100101101001101"),
+			want:           BitfieldPacketFromString("100101101001101"),
 			expectedErrors: nil,
 		},
 		{
 			name:           "bitfield packet: invalid length of 1 byte",
 			input:          []byte{0x00, 0x00, 0x00, 0x01, 0x05},
-			want:           newBitfieldPacket(""),
+			want:           BitfieldPacketFromString(""),
 			expectedErrors: []error{serde.ErrMalformedPacket},
 		},
 		{
 			name:           "bitfield packet: stream cut off while reading payload",
 			input:          []byte{0x00, 0x00, 0x00, 0x02, 0x05},
-			want:           newBitfieldPacket(""),
+			want:           BitfieldPacketFromString(""),
 			expectedErrors: []error{io.ErrUnexpectedEOF},
 		},
 
@@ -243,7 +243,130 @@ func TestDeserializePacket(t *testing.T) {
 	}
 }
 
-func newBitfieldPacket(description string) serde.BitfieldPacket {
+func TestSerialize(t *testing.T) {
+	testCases := []struct {
+		name  string
+		input serde.Serializer
+		want  []byte
+	}{
+		{
+			name:  "keep-alive packet",
+			input: serde.KeepAlivePacket{},
+			want: []byte{
+				0, 0, 0, 0,
+			},
+		},
+		{
+			name:  "choke packet",
+			input: serde.ChokePacket{},
+			want: []byte{
+				0, 0, 0, 1, 0,
+			},
+		},
+		{
+			name:  "unchoke packet",
+			input: serde.UnchokePacket{},
+			want: []byte{
+				0, 0, 0, 1, 1,
+			},
+		},
+		{
+			name:  "interested packet",
+			input: serde.InterestedPacket{},
+			want: []byte{
+				0, 0, 0, 1, 2,
+			},
+		},
+		{
+			name:  "not interested packet",
+			input: serde.NotInterestedPacket{},
+			want: []byte{
+				0, 0, 0, 1, 3,
+			},
+		},
+		{
+			name: "have packet",
+			input: serde.HavePacket{
+				PieceIndex: 9,
+			},
+			want: []byte{
+				0, 0, 0, 5, 4, 0, 0, 0, 9,
+			},
+		},
+		{
+			name:  "7 bits bitfield",
+			input: BitfieldPacketFromString("0010011"),
+			want: []byte{
+				0x00, 0x00, 0x00, 0x02, 5, 0b00100110,
+			},
+		},
+		{
+			name:  "9 bits bitfield",
+			input: BitfieldPacketFromString("100101101"),
+			want: []byte{
+				0x00, 0x00, 0x00, 0x03, 5, 0b10010110, 0b10000000,
+			},
+		},
+		{
+			name:  "15 bits bitfield",
+			input: BitfieldPacketFromString("100101101001101"),
+			want: []byte{
+				0x00, 0x00, 0x00, 0x03, 5, 0b10010110, 0b10011010,
+			},
+		},
+		{
+			name: "request packet",
+			input: serde.RequestPacket{
+				PieceIndex:  1,
+				BeginOffset: 0,
+				Length:      0x4000,
+			},
+			want: []byte{
+				0x00, 0x00, 0x00, 0x0d, 6,
+				0, 0, 0, 1,
+				0, 0, 0, 0,
+				0, 0, 0x40, 0x00,
+			},
+		},
+		{
+			name: "piece packet",
+			input: serde.PiecePacket{
+				PieceIndex:  1,
+				BeginOffset: 0,
+				Block:       []byte{0xde, 0xad, 0xbe, 0xef},
+			},
+			want: []byte{
+				0x00, 0x00, 0x00, 0x0d, 7,
+				0, 0, 0, 1,
+				0, 0, 0, 0,
+				0xde, 0xad, 0xbe, 0xef,
+			},
+		},
+		{
+			name: "cancel packet",
+			input: serde.CancelPacket{
+				PieceIndex:  1,
+				BeginOffset: 0,
+				Length:      0x4000,
+			},
+			want: []byte{
+				0x00, 0x00, 0x00, 0x0d, 8,
+				0, 0, 0, 1,
+				0, 0, 0, 0,
+				0, 0, 0x40, 0x00,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.input.Serialize()
+			helpers.AssertEqual(t, tc.want, got)
+		})
+	}
+}
+
+func BitfieldPacketFromString(description string) serde.BitfieldPacket {
 	bf := ds.NewBitfield()
 
 	for index, r := range description {

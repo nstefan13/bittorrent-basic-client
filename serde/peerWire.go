@@ -174,6 +174,73 @@ func DeserializePacket(reader io.Reader) (packet any, err error) {
 
 }
 
+func (p KeepAlivePacket) Serialize() []byte {
+	return []byte{0, 0, 0, 0}
+}
+
+func (p ChokePacket) Serialize() []byte {
+	return []byte{0, 0, 0, 1, 0}
+}
+
+func (p UnchokePacket) Serialize() []byte {
+	return []byte{0, 0, 0, 1, 1}
+}
+
+func (p InterestedPacket) Serialize() []byte {
+	return []byte{0, 0, 0, 1, 2}
+}
+
+func (p NotInterestedPacket) Serialize() []byte {
+	return []byte{0, 0, 0, 1, 3}
+}
+
+func (p HavePacket) Serialize() []byte {
+	buf := make([]byte, 9)
+	binary.BigEndian.PutUint32(buf[0:4], 5)
+	buf[4] = 4
+	binary.BigEndian.PutUint32(buf[5:9], uint32(p.PieceIndex))
+	return buf
+}
+
+func (p BitfieldPacket) Serialize() []byte {
+	raw := p.Bitfield.ToBytes()
+	buf := make([]byte, 5+len(raw))
+	binary.BigEndian.PutUint32(buf[0:4], uint32(1+len(raw)))
+	buf[4] = 5
+	copy(buf[5:], raw)
+	return buf
+}
+
+func (p RequestPacket) Serialize() []byte {
+	buf := make([]byte, 17)
+	binary.BigEndian.PutUint32(buf[0:4], 13)
+	buf[4] = 6
+	binary.BigEndian.PutUint32(buf[5:9], uint32(p.PieceIndex))
+	binary.BigEndian.PutUint32(buf[9:13], uint32(p.BeginOffset))
+	binary.BigEndian.PutUint32(buf[13:17], uint32(p.Length))
+	return buf
+}
+
+func (p PiecePacket) Serialize() []byte {
+	buf := make([]byte, 13+len(p.Block))
+	binary.BigEndian.PutUint32(buf[0:4], uint32(9+len(p.Block)))
+	buf[4] = 7
+	binary.BigEndian.PutUint32(buf[5:9], uint32(p.PieceIndex))
+	binary.BigEndian.PutUint32(buf[9:13], uint32(p.BeginOffset))
+	copy(buf[13:], p.Block)
+	return buf
+}
+
+func (p CancelPacket) Serialize() []byte {
+	buf := make([]byte, 17)
+	binary.BigEndian.PutUint32(buf[0:4], 13)
+	buf[4] = 8
+	binary.BigEndian.PutUint32(buf[5:9], uint32(p.PieceIndex))
+	binary.BigEndian.PutUint32(buf[9:13], uint32(p.BeginOffset))
+	binary.BigEndian.PutUint32(buf[13:17], uint32(p.Length))
+	return buf
+}
+
 func validateLength(length uint32) (int, error) {
 	// realistically, the largest packet will have
 	// a payload of 16MB, plus some protocol overhead
