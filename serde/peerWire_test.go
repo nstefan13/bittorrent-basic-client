@@ -2,7 +2,10 @@ package serde_test
 
 import (
 	"bytes"
+	"fmt"
 	"io"
+	"reflect"
+	"strings"
 	"testing"
 
 	ds "github.com/nstefan13/bittorrent/datastructures"
@@ -10,13 +13,100 @@ import (
 	"github.com/nstefan13/bittorrent/serde"
 )
 
-func TestSerializeBitfield(t *testing.T) {
+func TestDeserializePacket(t *testing.T) {
 	testCases := []struct {
 		name           string
 		input          []byte
-		want           serde.BitfieldPacket
+		want           any
 		expectedErrors []error
 	}{
+		// GENERIC ERRORS
+		{
+			name:           "packet too big",
+			input:          []byte{0xff, 0xff, 0xff, 0xff},
+			want:           nil,
+			expectedErrors: []error{serde.ErrPacketTooBig},
+		},
+		{
+			name:           "unknown packet-id",
+			input:          []byte{0x00, 0x00, 0x00, 0x01, 0xff},
+			want:           nil,
+			expectedErrors: []error{serde.ErrUnsupportedPacketType},
+		},
+		{
+			name:           "stream cut off while reading the length",
+			input:          []byte{0xff, 0xff, 0xff},
+			want:           nil,
+			expectedErrors: []error{io.ErrUnexpectedEOF},
+		},
+		{
+			name:           "stream cut off while reading type-id",
+			input:          []byte{0x00, 0x00, 0x00, 0x01},
+			want:           newBitfieldPacket(""),
+			expectedErrors: []error{io.ErrUnexpectedEOF},
+		},
+
+		// KEEP ALIVE PACKET
+		{
+			name:           "keep-alive packet",
+			input:          []byte{0, 0, 0, 0},
+			want:           serde.KeepAlivePacket{},
+			expectedErrors: nil,
+		},
+
+		// CHOKE PACKET
+		{
+			name:           "choke packet",
+			input:          []byte{0, 0, 0, 1, 0},
+			want:           serde.ChokePacket{},
+			expectedErrors: nil,
+		},
+
+		// UNCHOKE PACKET
+		{
+			name:           "unchoke packet",
+			input:          []byte{0, 0, 0, 1, 1},
+			want:           serde.UnchokePacket{},
+			expectedErrors: nil,
+		},
+
+		// INTERESTED PACKET
+		{
+			name:           "interested packet",
+			input:          []byte{0, 0, 0, 1, 2},
+			want:           serde.InterestedPacket{},
+			expectedErrors: nil,
+		},
+
+		// NOT INTERESTED PACKET
+		{
+			name:           "not interested packet",
+			input:          []byte{0, 0, 0, 1, 3},
+			want:           serde.NotInterestedPacket{},
+			expectedErrors: nil,
+		},
+
+		// HAVE PACKET
+		{
+			name:           "have packet",
+			input:          []byte{0, 0, 0, 5, 4, 0, 0, 0, 9},
+			want:           serde.HavePacket{9},
+			expectedErrors: nil,
+		},
+		{
+			name:           "have packet: length must be 5",
+			input:          []byte{0, 0, 0, 3, 4, 0, 0, 0, 1},
+			want:           nil,
+			expectedErrors: []error{serde.ErrMalformedPacket},
+		},
+		{
+			name:           "have packet: stream cut off while reading the piece index",
+			input:          []byte{0, 0, 0, 5, 4, 0, 0},
+			want:           nil,
+			expectedErrors: []error{io.ErrUnexpectedEOF},
+		},
+
+		// BITFIELD PACKET
 		{
 			name:           "7 bits bitfield",
 			input:          []byte{0x00, 0x00, 0x00, 0x02, 5, 0b00100110},
@@ -36,50 +126,114 @@ func TestSerializeBitfield(t *testing.T) {
 			expectedErrors: nil,
 		},
 		{
-			name:           "payload cut at length",
-			input:          []byte{0x00, 0x00},
+			name:           "bitfield packet: invalid length of 1 byte",
+			input:          []byte{0x00, 0x00, 0x00, 0x01, 0x05},
+			want:           newBitfieldPacket(""),
+			expectedErrors: []error{serde.ErrMalformedPacket},
+		},
+		{
+			name:           "bitfield packet: stream cut off while reading payload",
+			input:          []byte{0x00, 0x00, 0x00, 0x02, 0x05},
 			want:           newBitfieldPacket(""),
 			expectedErrors: []error{io.ErrUnexpectedEOF},
 		},
+
+		// REQUEST PACKET
 		{
-			name:           "invalid length of 0 bytes",
-			input:          []byte{0x00, 0x00, 0x00, 0x00},
-			want:           newBitfieldPacket(""),
+			name: "request packet",
+			input: []byte{0x00, 0x00, 0x00, 0x0d, 6,
+				0, 0, 0, 1,
+				0, 0, 0, 0,
+				0, 0, 0x40, 0x00},
+			want:           serde.RequestPacket{1, 0, 0x4000},
+			expectedErrors: nil,
+		},
+		{
+			name: "request packet: length must be 13",
+			input: []byte{0x00, 0x00, 0x00, 0x05, 6,
+				0, 0, 0, 1},
+			want:           nil,
 			expectedErrors: []error{serde.ErrMalformedPacket},
 		},
 		{
-			name:           "invalid length of 1 byte",
-			input:          []byte{0x00, 0x00, 0x00, 0x01},
-			want:           newBitfieldPacket(""),
-			expectedErrors: []error{serde.ErrMalformedPacket},
-		},
-		{
-			name:           "invalid type for Bitfield Packet",
-			input:          []byte{0x00, 0x00, 0x00, 0x02, 4},
-			want:           newBitfieldPacket(""),
-			expectedErrors: []error{serde.ErrMalformedPacket},
-		},
-		{
-			name:           "type id cut in the middle of transmission",
-			input:          []byte{0x00, 0x00, 0x00, 0x02},
-			want:           newBitfieldPacket(""),
+			name: "request packet: stream cut off while reading payload",
+			input: []byte{0x00, 0x00, 0x00, 0x0d, 6,
+				0, 0, 0, 1,
+				0, 0},
+			want:           nil,
 			expectedErrors: []error{io.ErrUnexpectedEOF},
 		},
+
+		// PIECE PACKET
 		{
-			name:           "payload cut in the middle of transmission",
-			input:          []byte{0x00, 0x00, 0x00, 0x02, 5},
-			want:           newBitfieldPacket(""),
+			name: "piece packet",
+			input: []byte{0x00, 0x00, 0x00, 0x0d, 7,
+				0, 0, 0, 1,
+				0, 0, 0, 0,
+				0xde, 0xad, 0xbe, 0xef},
+			want: serde.PiecePacket{
+				PieceIndex:  1,
+				BeginOffset: 0,
+				Block:       []byte{0xde, 0xad, 0xbe, 0xef},
+			},
+			expectedErrors: nil,
+		},
+		{
+			name:           "piece packet: invalid length of 1 byte",
+			input:          []byte{0x00, 0x00, 0x00, 0x01, 7},
+			want:           nil,
+			expectedErrors: []error{serde.ErrMalformedPacket},
+		},
+		{
+			name:           "piece packet: invalid length of 9 bytes",
+			input:          []byte{0x00, 0x00, 0x00, 0x09, 7},
+			want:           nil,
+			expectedErrors: []error{serde.ErrMalformedPacket},
+		},
+		{
+			name: "piece packet: stream cut off while reading payload",
+			input: []byte{0x00, 0x00, 0x00, 0x0d, 7,
+				0, 0, 0, 1,
+				0, 0},
+			want:           nil,
+			expectedErrors: []error{io.ErrUnexpectedEOF},
+		},
+
+		// CANCEL PACKET
+		{
+			name: "cancel packet",
+			input: []byte{0x00, 0x00, 0x00, 0x0d, 8,
+				0, 0, 0, 1,
+				0, 0, 0, 0,
+				0, 0, 0x40, 0x00},
+			want:           serde.CancelPacket{1, 0, 0x4000},
+			expectedErrors: nil,
+		},
+		{
+			name: "cancel packet: length must be 13",
+			input: []byte{0x00, 0x00, 0x00, 0x05, 8,
+				0, 0, 0, 1},
+			want:           nil,
+			expectedErrors: []error{serde.ErrMalformedPacket},
+		},
+		{
+			name: "cancel packet: stream cut off while reading payload",
+			input: []byte{0x00, 0x00, 0x00, 0x0d, 8,
+				0, 0, 0, 1,
+				0, 0},
+			want:           nil,
 			expectedErrors: []error{io.ErrUnexpectedEOF},
 		},
 	}
 
-	for _, tc := range testCases {
+	for index, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := serde.DeserializeBitfield(bytes.NewReader(tc.input))
+			t.Logf("test #%d", index)
+			got, err := serde.DeserializePacket(bytes.NewReader(tc.input))
 
 			if tc.expectedErrors == nil {
 				helpers.AssertNoError(t, err)
-				assertBitfieldPackets(t, tc.want, got)
+				assertPackets(t, tc.want, got)
 			} else {
 				for _, expectedErr := range tc.expectedErrors {
 					helpers.AssertError(t, err, expectedErr)
@@ -101,7 +255,10 @@ func newBitfieldPacket(description string) serde.BitfieldPacket {
 	return serde.BitfieldPacket{*bf}
 }
 
-func assertBitfieldPackets(t testing.TB, want, got serde.BitfieldPacket) {
-	t.Helper()
-	helpers.AssertEqual(t, want.Bitfield.String(), got.Bitfield.String())
+func assertPackets(t testing.TB, want, got any) {
+	if !reflect.DeepEqual(got, want) {
+		message := fmt.Sprintf("expected %#v, got %#v", want, got)
+		message = strings.ReplaceAll(message, "serde.", "")
+		t.Error(message)
+	}
 }
