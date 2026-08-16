@@ -1,5 +1,10 @@
 package datastructures
 
+import (
+	"fmt"
+	"strings"
+)
+
 // Bitfield represents a packed bit array used to track piece or block availability,
 // where the bit at index 0 corresponds to the most significant bit (MSB) of the first byte.
 type Bitfield struct {
@@ -26,6 +31,14 @@ func NewBitfield(bits ...int) *Bitfield {
 	}
 
 	return &Bitfield{data}
+}
+
+func NewBitfieldFromBytes(bytes []byte) *Bitfield {
+	if len(bytes) == 0 {
+		bytes = []byte{0}
+	}
+
+	return &Bitfield{bytes}
 }
 
 // SetBit sets (if value is true) or clears (if value is false) the bit at the specified index.
@@ -63,4 +76,14 @@ func (b *Bitfield) SetBit(index uint, value bool) {
 // ToBytes returns the underlying byte slice representing the bitfield.
 func (b *Bitfield) ToBytes() []byte {
 	return b.data
+}
+
+func (b *Bitfield) String() string {
+	var sb strings.Builder
+
+	for _, val := range b.data {
+		sb.WriteString(fmt.Sprintf("%08b", val))
+	}
+
+	return sb.String()
 }

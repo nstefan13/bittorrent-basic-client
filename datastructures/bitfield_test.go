@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	ds "github.com/nstefan13/bittorrent/datastructures"
+	"github.com/nstefan13/bittorrent/helpers"
 )
 
 func TestNewBitfield(t *testing.T) {
@@ -76,6 +77,21 @@ func TestNewBitfield(t *testing.T) {
 		assertBytes(t, []byte{0b10000000, 0b10010000}, bf.ToBytes())
 	})
 
+	t.Run("String() returns a human readable representation", func(t *testing.T) {
+		input := ds.NewBitfield(0, 1, 1, 0, 1, 0, 1, 1, 1)
+		got := input.String()
+		want := "0110101110000000"
+		helpers.AssertEqual(t, want, got)
+	})
+
+	t.Run("NewBitfieldFromBytes wraps those bytes in a Bitfield", func(t *testing.T) {
+		buffer := []byte{0b00010101, 0b01010010}
+		bf := ds.NewBitfieldFromBytes(buffer)
+
+		want := "0001010101010010"
+		got := bf.String()
+		helpers.AssertEqual(t, want, got)
+	})
 }
 
 func assertBytes(t testing.TB, want, got []byte) {
