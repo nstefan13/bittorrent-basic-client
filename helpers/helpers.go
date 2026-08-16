@@ -77,3 +77,14 @@ func SHA1String(strings ...string) [20]byte {
 	return sha1.Sum(buffer)
 }
 
+// Reads exactly `length` bytes from the provided `reader`. It forwards any
+// IO errors it received back to the caller, with the exception of io.EOF, which
+// always gets translated into a io.UnexpectedEOF (since this function is supposed
+// to read exactly `length` bytes and not doing so should result in a error - like
+// io.UnexpectedEOF, not a signal - like io.EOF)
+func ReadExactly(length int, reader io.Reader) (buffer []byte, err error) {
+	buffer = make([]byte, length)
+	_, err = io.ReadFull(reader, buffer)
+	err = TreatEOFAsUnexpected(err)
+	return
+}
