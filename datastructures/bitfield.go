@@ -75,6 +75,18 @@ func (b *Bitfield) SetBit(index uint, value bool) {
 	}
 }
 
+// GetBit returns the boolean value of the bit at the specified index.
+// If the index exceeds the currently allocated bytes, it returns false.
+func (b Bitfield) GetBit(index uint) bool {
+	byteIndex := int(index / 8)
+	if byteIndex >= len(b.data) {
+		return false
+	}
+
+	bitIndex := index & 0b111
+	return (b.data[byteIndex] & (1 << (7 - bitIndex))) != 0
+}
+
 // ToBytes returns the underlying byte slice representing the bitfield.
 func (b *Bitfield) ToBytes() []byte {
 	return b.data

@@ -104,6 +104,27 @@ func TestNewBitfieldFromBits(t *testing.T) {
 	})
 }
 
+func TestBitfield_GetBit(t *testing.T) {
+	t.Run("returns correct boolean value for bits", func(t *testing.T) {
+		bf := *ds.NewBitfieldFromBits(1, 0, 1, 1, 0, 0, 1, 0, 1)
+
+		expected := []bool{true, false, true, true, false, false, true, false, true}
+		for i, want := range expected {
+			helpers.AssertEqual(t, want, bf.GetBit(uint(i)))
+		}
+	})
+
+	t.Run("returns false when index exceeds allocated bytes", func(t *testing.T) {
+		bf := *ds.NewBitfield([]byte{0b10000000})
+
+		helpers.AssertEqual(t, true, bf.GetBit(0))
+		helpers.AssertEqual(t, false, bf.GetBit(1))
+		helpers.AssertEqual(t, false, bf.GetBit(7))
+		helpers.AssertEqual(t, false, bf.GetBit(8))
+		helpers.AssertEqual(t, false, bf.GetBit(100))
+	})
+}
+
 func assertBytes(t testing.TB, want, got []byte) {
 	t.Helper()
 
