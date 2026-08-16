@@ -15,7 +15,7 @@ This separation of concerns allows me to handle the responsability of mapping th
 
 The code responsible for the first step lives in `/bencoding`. It also provides aliases to those intermediate representation with loose types (so `[]any` becomes BList, `map[string]any` becomes BDict etc).
 
-The code responsible for the second step lives in `/serde` (which stands for "SERialize & DEserialize"). In there one will find multiple structs that map to protocol-specific objects (like the `serde.MetaInfo`). The package allows one to create them from a byte stream via `Serialize*` methods (like `SerializeMetaInfo`) or turn them back into a byte stream via `Deserialize*` methods. Moreover, it also provides helper methods that make it a little bit more convenient to handle the mapping between loose types and bytes (examples of that are `Decode` and `Encode`).
+The code responsible for the second step lives in `/serde` (which stands for "SERialize & DEserialize"). In there one will find multiple structs that map to protocol-specific objects (like the `serde.MetaInfo`). The package allows one to create them from a byte stream via `Deserialize*` methods (like `DeserializeMetaInfo`) or turn them back into a byte stream via `Serialize*` methods. Moreover, it also provides helper methods that make it a little bit more convenient to handle the mapping between loose types and bytes (examples of that are `Decode` and `Encode`).
 
 ## Protocol Implementation
 

@@ -95,7 +95,7 @@ func (i *InfoDict) InfoHash() [20]byte {
 	return hash
 }
 
-// SerializeMetaInfo decodes a bencoded dictionary from the provided io.Reader stream
+// DeserializeMetaInfo decodes a bencoded dictionary from the provided io.Reader stream
 // and maps its fields into a strongly-typed MetaInfo struct.
 //
 // Error Handling:
@@ -114,7 +114,7 @@ func (i *InfoDict) InfoHash() [20]byte {
 //
 // Returned errors wrap sentinel errors such as ErrMalformedMetaInfo, ErrKeyNotFound, or
 // ErrTypeMismatch, allowing callers to inspect specific failure conditions using errors.Is.
-func SerializeMetaInfo(reader io.Reader) (metaInfo *MetaInfo, err error) {
+func DeserializeMetaInfo(reader io.Reader) (metaInfo *MetaInfo, err error) {
 	metaInfo = &MetaInfo{}
 	decoder := bcd.NewDecoder(reader)
 	dict, err := decoder.DecodeDict()

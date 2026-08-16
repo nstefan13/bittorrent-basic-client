@@ -10,7 +10,7 @@ import (
 	"github.com/nstefan13/bittorrent/serde"
 )
 
-func TestSerializeMetaInfo(t *testing.T) {
+func TestDeserializeMetaInfo(t *testing.T) {
 	tests := []struct {
 		name    string
 		torrent []byte
@@ -55,7 +55,7 @@ func TestSerializeMetaInfo(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := serde.SerializeMetaInfo(bytes.NewReader(tt.torrent))
+			got, err := serde.DeserializeMetaInfo(bytes.NewReader(tt.torrent))
 			helpers.AssertNoError(t, err)
 			helpers.AssertEqual(t, tt.want, got)
 		})
@@ -65,7 +65,7 @@ func TestSerializeMetaInfo(t *testing.T) {
 func TestInfoHash(t *testing.T) {
 	t.Run("single file mode", func(t *testing.T) {
 		torrent := []byte("d8:announce35:udp://tracker.openbittorrent.com:804:infod6:lengthi1024e4:name8:test.txt12:piece lengthi16384e6:pieces20:12345678901234567890ee")
-		metaInfo, err := serde.SerializeMetaInfo(bytes.NewReader(torrent))
+		metaInfo, err := serde.DeserializeMetaInfo(bytes.NewReader(torrent))
 		helpers.AssertNoError(t, err)
 
 		infoDictBytes := []byte("d6:lengthi1024e4:name8:test.txt12:piece lengthi16384e6:pieces20:12345678901234567890e")
@@ -76,7 +76,7 @@ func TestInfoHash(t *testing.T) {
 
 	t.Run("multiple file mode", func(t *testing.T) {
 		torrent := []byte("d8:announce35:udp://tracker.openbittorrent.com:804:infod5:filesld6:lengthi1024e4:pathl4:dir18:file.txteed6:lengthi2048e4:pathl4:dir29:image.pngeee4:name9:my_folder12:piece lengthi16384e6:pieces20:12345678901234567890ee")
-		metaInfo, err := serde.SerializeMetaInfo(bytes.NewReader(torrent))
+		metaInfo, err := serde.DeserializeMetaInfo(bytes.NewReader(torrent))
 		helpers.AssertNoError(t, err)
 
 		infoDictBytes := []byte("d5:filesld6:lengthi1024e4:pathl4:dir18:file.txteed6:lengthi2048e4:pathl4:dir29:image.pngeee4:name9:my_folder12:piece lengthi16384e6:pieces20:12345678901234567890e")
@@ -86,7 +86,7 @@ func TestInfoHash(t *testing.T) {
 	})
 }
 
-func TestSerializeMetaInfoErrors(t *testing.T) {
+func TestDeserializeMetaInfoErrors(t *testing.T) {
 	tests := []struct {
 		name        string
 		torrent     []byte
@@ -235,7 +235,7 @@ func TestSerializeMetaInfoErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := serde.SerializeMetaInfo(bytes.NewReader(tt.torrent))
+			_, err := serde.DeserializeMetaInfo(bytes.NewReader(tt.torrent))
 			helpers.AssertError(t, err, tt.expectRoot)
 			if tt.expectCause != nil {
 				helpers.AssertError(t, err, tt.expectCause)
