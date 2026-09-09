@@ -96,6 +96,17 @@ func TestInfodictTorrentLayout(t *testing.T) {
 		helpers.AssertEqual(t, 10, piece.Blocks.Get(0).Size)
 	})
 
+	t.Run("every piece has at least one block", func(t *testing.T) {
+		metainfo := serde.MetaInfo{Info: serde.InfoDict{Length: 25, PieceLength: 10, Pieces: strings.Repeat("0", 60)}}
+		pieces := p.NewTorrentLayout(metainfo, 4).Pieces()
+
+		for pieceIndex := 0; pieceIndex < pieces.Len(); pieceIndex++ {
+			if pieces.Get(pieceIndex).Blocks.Len() < 1 {
+				t.Fatalf("piece %d has no blocks", pieceIndex)
+			}
+		}
+	})
+
 	t.Run("panics if Pieces string length is not a multiple of 20", func(t *testing.T) {
 		assert.Panics(t, func() {
 			metainfo := serde.MetaInfo{Info: serde.InfoDict{Length: 100, PieceLength: 10, Pieces: "short"}}

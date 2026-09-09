@@ -20,6 +20,8 @@ type PieceInfo struct {
 
 type TorrentLayoutProvider interface {
 	// Pieces returns a lazy array of all pieces in the torrent.
+	// For each piece it MUST enforce that it has at least 1 block,
+	// if it cannot enforce this requirement, it should PANIC.
 	Pieces() ds.LazyArray[PieceInfo]
 }
 
@@ -89,11 +91,17 @@ func (l TorrentLayout) Pieces() ds.LazyArray[PieceInfo] {
 	numPieces := len(l.hashes) / 20
 	return ds.NewLazyArray(numPieces, func(pieceIndex int) PieceInfo {
 		pieceSize := min(l.pieceLength, l.torrentSize-pieceIndex*l.pieceLength)
+		if pieceSize <= 0 || l.blockLength <= 0 {
+			panic(fmt.Sprintf("invalid piece/block size: piece=%d, block=%d", pieceSize, l.blockLength))
+		}
 
 		var hash [20]byte
 		copy(hash[:], l.hashes[pieceIndex*20:(pieceIndex+1)*20])
 
-		numBlocks := (pieceSize + l.blockLength - 1) / l.blockLength
+		numBlocks := 1 + (pieceSize-1)/l.blockLength
+		if numBlocks < 1 {
+			panic("a piece must have at least one block")
+		}
 
 		return PieceInfo{
 			Hash: hash,
