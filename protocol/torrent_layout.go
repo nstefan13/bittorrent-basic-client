@@ -7,22 +7,22 @@ import (
 	"github.com/nstefan13/bittorrent/serde"
 )
 
-type BlockInfo struct {
+type BlockRange struct {
 	Begin int
 	Size  int
 }
 
-type PieceInfo struct {
+type PieceLayout struct {
 	Hash   [20]byte
 	Size   int
-	Blocks ds.LazyArray[BlockInfo]
+	Blocks ds.LazyArray[BlockRange]
 }
 
 type TorrentLayoutProvider interface {
 	// Pieces returns a lazy array of all pieces in the torrent.
-	// For each piece it MUST enforce that it has at least 1 block,
+	// For each piece, it MUST enforce that it has at least 1 block,
 	// if it cannot enforce this requirement, it should PANIC.
-	Pieces() ds.LazyArray[PieceInfo]
+	Pieces() ds.LazyArray[PieceLayout]
 }
 
 ///// ACTUAL IMPLEMENTATIONS
@@ -87,9 +87,9 @@ func NewTorrentLayout(metainfo serde.MetaInfo, blockSize int) TorrentLayoutProvi
 
 // Pieces returns a lazy array of all pieces in the torrent, generating piece sizes,
 // hashes, and block breakdowns on the fly without allocating large arrays in memory.
-func (l TorrentLayout) Pieces() ds.LazyArray[PieceInfo] {
+func (l TorrentLayout) Pieces() ds.LazyArray[PieceLayout] {
 	numPieces := len(l.hashes) / 20
-	return ds.NewLazyArray(numPieces, func(pieceIndex int) PieceInfo {
+	return ds.NewLazyArray(numPieces, func(pieceIndex int) PieceLayout {
 		pieceSize := min(l.pieceLength, l.torrentSize-pieceIndex*l.pieceLength)
 		if pieceSize <= 0 || l.blockLength <= 0 {
 			panic(fmt.Sprintf("invalid piece/block size: piece=%d, block=%d", pieceSize, l.blockLength))
@@ -103,13 +103,13 @@ func (l TorrentLayout) Pieces() ds.LazyArray[PieceInfo] {
 			panic("a piece must have at least one block")
 		}
 
-		return PieceInfo{
+		return PieceLayout{
 			Hash: hash,
 			Size: pieceSize,
-			Blocks: ds.NewLazyArray(numBlocks, func(blockIndex int) BlockInfo {
+			Blocks: ds.NewLazyArray(numBlocks, func(blockIndex int) BlockRange {
 				blockBegin := blockIndex * l.blockLength
 				blockSize := min(l.blockLength, pieceSize-blockIndex*l.blockLength)
-				return BlockInfo{
+				return BlockRange{
 					Begin: blockBegin,
 					Size:  blockSize,
 				}

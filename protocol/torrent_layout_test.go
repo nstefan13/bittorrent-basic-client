@@ -122,14 +122,14 @@ func TestInfodictTorrentLayout(t *testing.T) {
 	})
 }
 
-func piecesSample() (ds.LazyArray[protocol.PieceInfo], [][20]byte) {
+func piecesSample() (ds.LazyArray[protocol.PieceLayout], [][20]byte) {
 	blockHash1 := helpers.RandomHash()
 	blockHash2 := helpers.RandomHash()
-	pieces := ds.NewLazyArrayFromSlice([]p.PieceInfo{
+	pieces := ds.NewLazyArrayFromSlice([]p.PieceLayout{
 		{
 			Hash: blockHash1,
 			Size: 3 * 1024,
-			Blocks: ds.NewLazyArrayFromSlice([]p.BlockInfo{
+			Blocks: ds.NewLazyArrayFromSlice([]p.BlockRange{
 				{
 					Begin: 0,
 					Size:  2 * 1024,
@@ -143,7 +143,7 @@ func piecesSample() (ds.LazyArray[protocol.PieceInfo], [][20]byte) {
 		{
 			Hash: blockHash2,
 			Size: 2 * 1024,
-			Blocks: ds.NewLazyArrayFromSlice([]p.BlockInfo{
+			Blocks: ds.NewLazyArrayFromSlice([]p.BlockRange{
 				{
 					Begin: 0,
 					Size:  2 * 1024,
@@ -155,7 +155,7 @@ func piecesSample() (ds.LazyArray[protocol.PieceInfo], [][20]byte) {
 	return pieces, [][20]byte{blockHash1, blockHash2}
 }
 
-func AssertPieces(t *testing.T, got, want ds.LazyArray[p.PieceInfo]) {
+func AssertPieces(t *testing.T, got, want ds.LazyArray[p.PieceLayout]) {
 	t.Helper()
 
 	if want.Len() != got.Len() {
