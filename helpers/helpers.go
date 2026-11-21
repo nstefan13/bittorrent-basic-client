@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/url"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/alecthomas/assert/v2"
@@ -87,4 +89,8 @@ func ReadExactly(length int, reader io.Reader) (buffer []byte, err error) {
 	_, err = io.ReadFull(reader, buffer)
 	err = TreatEOFAsUnexpected(err)
 	return
+}
+
+func RandomHash() [20]byte {
+	return SHA1String(strconv.Itoa(rand.Int()))
 }
