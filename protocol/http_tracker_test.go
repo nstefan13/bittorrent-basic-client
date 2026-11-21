@@ -191,7 +191,7 @@ func setupRaw(data []byte) setupResult {
 	trackerServer := httptest.NewServer(trackerHandler)
 	trackerURL, _ := url.Parse(trackerServer.URL)
 
-	infoHash := randomHash()
+	infoHash := helpers.RandomHash()
 	listeningPort := uint16(rand.IntN(65536))
 	trackerClient := protocol.NewHTTPTracker(*trackerURL, infoHash, listeningPort)
 
@@ -208,7 +208,7 @@ func setup(requestData bcd.BDict) setupResult {
 	trackerServer := httptest.NewServer(trackerHandler)
 	trackerURL, _ := url.Parse(trackerServer.URL)
 
-	infoHash := randomHash()
+	infoHash := helpers.RandomHash()
 	listeningPort := uint16(rand.IntN(65536))
 	trackerClient := protocol.NewHTTPTracker(*trackerURL, infoHash, listeningPort)
 
@@ -220,11 +220,7 @@ func setup(requestData bcd.BDict) setupResult {
 	}
 }
 
-func randomHash() [20]byte {
-	return helpers.SHA1String(strconv.Itoa(rand.Int()))
-}
-
 func randomHashAsString() string {
-	slice := randomHash()
+	slice := helpers.RandomHash()
 	return string(slice[:])
 }
